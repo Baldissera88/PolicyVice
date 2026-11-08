@@ -181,6 +181,8 @@ namespace PolicyVice
         [DataMember] public List<RegistryEntry> PolicyRegistry = new List<RegistryEntry>();
         [DataMember] public List<AdmxFile> AdmxFiles = new List<AdmxFile>();
         [DataMember] public List<string> AccessDenied = new List<string>();
+        [DataMember] public DeviceInfo Device = new DeviceInfo();
+        [DataMember] public List<ImeItem> Intune = new List<ImeItem>();
 
         public int Count(string kind)
         {
@@ -234,6 +236,9 @@ namespace PolicyVice
                 if (s.PolicyRegistry == null) s.PolicyRegistry = new List<RegistryEntry>();
                 if (s.AdmxFiles == null) s.AdmxFiles = new List<AdmxFile>();
                 if (s.AccessDenied == null) s.AccessDenied = new List<string>();
+                if (s.Device == null) s.Device = new DeviceInfo();
+                if (s.Device.Items == null) s.Device.Items = new List<InfoItem>();
+                if (s.Intune == null) s.Intune = new List<ImeItem>();
                 foreach (PolicySetting p in s.Settings)
                 {
                     if (p.Findings == null) p.Findings = new List<Finding>();

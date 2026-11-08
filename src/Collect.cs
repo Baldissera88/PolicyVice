@@ -55,6 +55,8 @@ namespace PolicyVice
             s.EventDays = opt.EventDays;
 
             ReadEnrollments(reg, s);
+            try { s.Device = DeviceCollector.Collect(reg) ?? new DeviceInfo(); } catch (Exception) { s.Device = new DeviceInfo(); }
+            try { s.Intune = ImeCollector.Collect(reg) ?? new List<ImeItem>(); } catch (Exception) { s.Intune = new List<ImeItem>(); }
             ReadAdmxInstalled(reg, s, catalog);
             ReadMdm(reg, s, catalog);
             RegValue wins = reg.Get(PolicyManager + @"\current\device\ControlPolicyConflict", "MDMWinsOverGP");

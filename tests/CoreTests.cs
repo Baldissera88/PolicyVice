@@ -96,9 +96,8 @@ namespace PolicyVice.Tests
         }
     }
 
-    public static class Program
+    public static class CoreTests
     {
-        static int failed, passed;
 
         const string IntuneId = "3A1B2C3D-0000-4000-8000-000000000001";
         const string Pm = @"HKLM\SOFTWARE\Microsoft\PolicyManager";
@@ -106,12 +105,7 @@ namespace PolicyVice.Tests
 
         static void Check(bool ok, string what)
         {
-            if (ok) passed++;
-            else
-            {
-                failed++;
-                Console.WriteLine("FAIL: " + what);
-            }
+            T.Check(ok, "core: " + what);
         }
 
         public static FakeRegistry SampleRegistry()
@@ -212,7 +206,7 @@ namespace PolicyVice.Tests
             return Collector.Collect(SampleRegistry(), SampleRsop(), SampleEvents(), SampleCatalog(), o);
         }
 
-        public static int Main(string[] args)
+        public static void Run(string[] args)
         {
             Snapshot s = Sample();
 
@@ -326,8 +320,6 @@ namespace PolicyVice.Tests
             Check(ue.Scope == "User" && ue.Area == "Start" && ue.Name == "HideRecentlyAddedApps", "user URI parsed");
 
             if (args.Length > 0) File.WriteAllText(args[0], html);
-            Console.WriteLine(passed + " passed, " + failed + " failed");
-            return failed == 0 ? 0 : 1;
         }
     }
 }

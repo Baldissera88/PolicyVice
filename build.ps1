@@ -23,10 +23,8 @@ param(
 $ErrorActionPreference = 'Stop'
 Set-Location -Path $PSScriptRoot
 
-$sources = @(
-    'src\AssemblyInfo.cs', 'src\Model.cs', 'src\Sources.cs', 'src\Admx.cs', 'src\Collect.cs', 'src\Diff.cs',
-    'src\Report.cs', 'src\Demo.cs', 'src\LogViceLink.cs', 'src\Ui.Theme.cs', 'src\Ui.Controls.cs', 'src\Ui.MainForm.cs', 'src\Program.cs'
-)
+$sources = @(Get-ChildItem -Path src -Filter *.cs | Sort-Object -Property Name | ForEach-Object { 'src\' + $_.Name })
+$resources = @(Get-ChildItem -Path res -File -ErrorAction SilentlyContinue | ForEach-Object { '/resource:res\' + $_.Name + ',' + $_.Name })
 
 $csc = Join-Path $env:WINDIR 'Microsoft.NET\Framework64\v4.0.30319\csc.exe'
 if (-not (Test-Path -Path $csc)) {
@@ -41,7 +39,7 @@ $cscArgs = @(
     '/reference:System.dll', '/reference:System.Core.dll', '/reference:System.Xml.dll', '/reference:System.Runtime.Serialization.dll',
     '/reference:System.Management.dll', '/reference:System.Drawing.dll', '/reference:System.Windows.Forms.dll',
     '/win32icon:PolicyVice.ico', '/resource:PolicyVice.ico,PolicyVice.ico', '/out:PolicyVice.exe'
-) + $sources
+) + $resources + $sources
 
 & $csc @cscArgs
 if ($LASTEXITCODE -ne 0) {
