@@ -1,0 +1,118 @@
+name: Build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  id-token: write
+  attestations: write
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    outputs:
+      version: ${{ steps.info.outputs.version }}
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install Mono and msitools
+        env:
+          DEBIAN_FRONTEND: noninteractive
+        run: |
+          sudo rm -f /var/lib/man-db/auto-update
+          sudo apt-get update -q
+          sudo apt-get install -y -q --no-install-recommends mono-devel wixl msitools
+
+      - name: Build PolicyVice.exe and PolicyVice.msi
+        run: ./package.sh
+
+      - name: Run tests
+        run: ./tests/run.sh
+
+      - name: Read version and product code
+        id: info
+        run: |
+          version=$(msiinfo export PolicyVice.msi Property | awk -F'\t' '$1=="ProductVersion"{print $2}' | tr -d '\r')
+          code=$(msiinfo export PolicyVice.msi Property | awk -F'\t' '$1=="ProductCode"{print $2}' | tr -d '\r')
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "code=$code" >> "$GITHUB_OUTPUT"
+          echo "PolicyVice $version, product code $code"
+
+      - name: Check that the release tag matches the version
+        if: github.event_name == 'release'
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          if [ "$tag" != "${{ steps.info.outputs.version }}" ]; then
+            echo "::error::Release tag $GITHUB_REF_NAME does not match version ${{ steps.info.outputs.version }} in PolicyVice.wxs"
+            exit 1
+          fi
+
+      - name: Write checksums
+        run: sha256sum PolicyVice.exe PolicyVice.msi > SHA256SUMS.txt && cat SHA256SUMS.txt
+
+      - name: Attest build provenance
+        if: github.event_name != 'pull_request'
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: |
+            PolicyVice.exe
+            PolicyVice.msi
+
+      - name: Keep the build as an artifact
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: PolicyVice-${{ steps.info.outputs.version }}
+          path: |
+            PolicyVice.exe
+            PolicyVice.msi
+            SHA256SUMS.txt
+
+      - name: Attach files to the release
+        if: github.event_name == 'release'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release upload "$GITHUB_REF_NAME" PolicyVice.exe PolicyVice.msi SHA256SUMS.txt --clobber
+          gh release view "$GITHUB_REF_NAME" --json body --jq .body | tr -d '\r' | awk '
+            { line = $0; sub(/[ \t]+$/, "", line) }
+            !seen && NF { seen = 1; if (line == "### Verify this download") { skip = 1; next } }
+            skip { if (line ~ /^### What.s new$/) skip = 0; next }
+            line == "### Deployment" || line == "### SHA256" { exit }
+            { print }
+          ' | awk 'NF { for (; blank > 0; blank--) print ""; print; found = 1; next } found { blank++ }' > release-notes.md
+          {
+            echo "### Verify this download"
+            echo
+            echo '```'
+            cat SHA256SUMS.txt
+            echo '```'
+            echo
+            echo '```powershell'
+            echo 'Get-FileHash .\PolicyVice.msi'
+            echo "gh attestation verify .\\PolicyVice.msi -R ${GITHUB_REPOSITORY}"
+            echo '```'
+            echo
+            echo "\`Get-FileHash\` should show the same SHA256 as above. \`gh attestation verify\` confirms that GitHub Actions built the file from this repository, at commit [${GITHUB_SHA::7}](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/commit/${GITHUB_SHA})."
+            if grep -q '[^[:space:]]' release-notes.md; then
+              echo
+              echo "### What's new"
+              echo
+              cat release-notes.md
+            fi
+            echo
+            echo "### Deployment"
+            echo
+            echo "| | |"
+            echo "|---|---|"
+            echo "| Product code | \`${{ steps.info.outputs.code }}\` |"
+            echo "| Install | \`msiexec /i PolicyVice.msi /qn\` |"
+            echo "| Uninstall | \`msiexec /x ${{ steps.info.outputs.code }} /qn\` |"
+          } > notes.md
+          gh release edit "$GITHUB_REF_NAME" --notes-file notes.md

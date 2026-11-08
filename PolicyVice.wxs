@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+  <Product Id="026AB289-0B4D-44AD-9A96-21E306134CA9"
+           Name="PolicyVice"
+           Language="1033"
+           Codepage="1252"
+           Version="0.1.0"
+           Manufacturer="Daniel L. Baldissera"
+           UpgradeCode="3C84D289-D136-4103-B7CB-9E978F088172">
+
+    <Package InstallerVersion="500"
+             Compressed="yes"
+             InstallScope="perMachine"
+             Description="PolicyVice policy inspector"
+             Comments="Policy inspector for Intune, MDM and Group Policy" />
+
+    <MajorUpgrade DowngradeErrorMessage="A newer version of PolicyVice is already installed." />
+
+    <Media Id="1" Cabinet="policyvice.cab" EmbedCab="yes" />
+
+    <Property Id="NETFX4RELEASE">
+      <RegistrySearch Id="NetFx4Release" Root="HKLM" Key="SOFTWARE\Microsoft\NET Framework Setup\NDP\v4\Full" Name="Release" Type="raw" Win64="yes" />
+    </Property>
+    <Condition Message="PolicyVice needs .NET Framework 4.5 or later.">Installed OR NETFX4RELEASE</Condition>
+
+    <Icon Id="PolicyVice.ico" SourceFile="PolicyVice.ico" />
+    <Property Id="ARPPRODUCTICON" Value="PolicyVice.ico" />
+    <Property Id="ARPNOMODIFY" Value="1" />
+    <Property Id="ARPNOREPAIR" Value="1" />
+
+    <Directory Id="TARGETDIR" Name="SourceDir">
+      <Directory Id="ProgramFiles64Folder">
+        <Directory Id="INSTALLDIR" Name="PolicyVice">
+
+          <Component Id="PolicyViceExe" Guid="7E32574D-347F-41D9-A29E-453066F94B6E" Win64="yes">
+            <File Id="PolicyViceExe" Name="PolicyVice.exe" Source="PolicyVice.exe" KeyPath="yes" DefaultVersion="0.1.0.0">
+              <Shortcut Id="StartMenuShortcut"
+                        Directory="ProgramMenuFolder"
+                        Name="PolicyVice"
+                        Description="Policy inspector for Intune, MDM and Group Policy"
+                        WorkingDirectory="INSTALLDIR" />
+            </File>
+          </Component>
+
+          <Component Id="Registration" Guid="B7F16F23-A464-43FE-94F0-C657EAAB8848" Win64="yes">
+            <RegistryValue Root="HKLM" Key="Software\PolicyVice" Name="InstallDir" Type="string" Value="[INSTALLDIR]" KeyPath="yes" />
+            <RegistryValue Root="HKLM" Key="Software\Microsoft\Windows\CurrentVersion\App Paths\PolicyVice.exe" Type="string" Value="[INSTALLDIR]PolicyVice.exe" />
+          </Component>
+
+        </Directory>
+      </Directory>
+      <Directory Id="ProgramMenuFolder" />
+    </Directory>
+
+    <Feature Id="Main" Title="PolicyVice" Level="1">
+      <ComponentRef Id="PolicyViceExe" />
+      <ComponentRef Id="Registration" />
+    </Feature>
+  </Product>
+</Wix>

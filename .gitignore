@@ -1,0 +1,10 @@
+# Build output
+PolicyVice.exe
+PolicyVice.msi
+*.wixobj
+*.wixpdb
+*.pdb
+tests/*.exe
+out/
+art/png/
+__pycache__/
