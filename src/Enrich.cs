@@ -7,10 +7,13 @@ namespace PolicyVice
     // counterpart of each MDM setting, and conflicts where MDM and Group Policy set the same policy.
     public static class Enricher
     {
-        public const string WinsOn = " MDMWinsOverGP is on, so Windows blocks the Group Policy value for Policy CSP settings that have a Group Policy equivalent.";
-        public const string WinsOff = " MDMWinsOverGP is off, so which value applies depends on the setting and on which was applied last.";
-
         public static void Apply(Snapshot s, CspCatalog csp, AdmxCatalog admx)
+        {
+            Apply(s, csp, admx, null);
+        }
+
+        // note gives the sentence about MDMWinsOverGP that ends each conflict message, for the MDM setting involved.
+        public static void Apply(Snapshot s, CspCatalog csp, AdmxCatalog admx, Func<PolicySetting, string> note)
         {
             if (s == null) return;
             if (csp == null) csp = new CspCatalog();
@@ -23,7 +26,17 @@ namespace PolicyVice
                 }
                 catch (Exception) { }
             }
-            try { Conflicts(s, csp, admx); }
+            if (note == null)
+            {
+                bool on = s.MdmWinsOverGp;
+                note = delegate (PolicySetting m)
+                {
+                    return on
+                        ? " MDMWinsOverGP is on. It blocks the Group Policy value only for Policy CSP settings that have an equivalent Group Policy."
+                        : " MDMWinsOverGP is off, so there is no guarantee which one wins.";
+                };
+            }
+            try { Conflicts(s, csp, admx, note); }
             catch (Exception) { }
         }
 
@@ -47,13 +60,21 @@ namespace PolicyVice
                 p.FriendlyName = e.FriendlyName;
         }
 
-        static void Conflicts(Snapshot s, CspCatalog csp, AdmxCatalog admx)
+        static void Conflicts(Snapshot s, CspCatalog csp, AdmxCatalog admx, Func<PolicySetting, string> note)
         {
             Dictionary<string, PolicySetting> mdm = new Dictionary<string, PolicySetting>(StringComparer.OrdinalIgnoreCase);
+            Dictionary<AdmxPolicy, List<PolicySetting>> mdmByAdmx = new Dictionary<AdmxPolicy, List<PolicySetting>>();
             foreach (PolicySetting p in s.Settings)
-                if (p.Layer == Layers.Mdm) mdm[p.Scope + "|" + (p.UserSid ?? "") + "|" + p.Area + "|" + p.Name] = p;
+            {
+                if (p.Layer != Layers.Mdm) continue;
+                mdm[p.Scope + "|" + (p.UserSid ?? "") + "|" + p.Area + "|" + p.Name] = p;
+                AdmxPolicy b = admx.ForMdm(p.Area, p.Name);
+                if (b == null) continue;
+                List<PolicySetting> l;
+                if (!mdmByAdmx.TryGetValue(b, out l)) { l = new List<PolicySetting>(); mdmByAdmx[b] = l; }
+                l.Add(p);
+            }
 
-            string wins = s.MdmWinsOverGp ? WinsOn : WinsOff;
             foreach (PolicySetting g in s.Settings)
             {
                 if (g.Layer != Layers.Registry || g.Source != Sources.GroupPolicy) continue;
@@ -61,26 +82,26 @@ namespace PolicyVice
                 string valueName = g.Name == "(Default)" ? "" : g.Name;
                 List<PolicySetting> matches = new List<PolicySetting>();
 
-                // The ADMX policy that writes this value, and the MDM settings that map to that policy.
+                // The ADMX policy that writes this value, and the MDM settings that map to that policy:
+                // ADMX_ areas and ingested ADMX through the local ADMX files, other areas through the documentation.
                 AdmxPolicy a = admx.ForValue(key, valueName);
                 if (a != null)
                 {
+                    List<PolicySetting> same;
+                    if (mdmByAdmx.TryGetValue(a, out same))
+                        foreach (PolicySetting m in same)
+                            if (SameScope(m, g) && !matches.Contains(m)) matches.Add(m);
                     foreach (CspEntry e in csp.FindByAdmx(a.File, a.Name)) Collect(mdm, g, e.Area, e.Name, matches);
-                    foreach (PolicySetting m in s.Settings)
-                    {
-                        if (m.Layer != Layers.Mdm || !m.Area.StartsWith("ADMX_", StringComparison.OrdinalIgnoreCase) && m.Area.IndexOf("~Policy~", StringComparison.OrdinalIgnoreCase) < 0) continue;
-                        AdmxPolicy b = admx.ForMdm(m.Area, m.Name);
-                        if (b != null && b == a && SameScope(m, g) && !matches.Contains(m)) matches.Add(m);
-                    }
                 }
                 // Settings whose documented Group Policy registry value is exactly this one.
                 foreach (CspEntry e in csp.FindByRegistry(key, valueName)) Collect(mdm, g, e.Area, e.Name, matches);
 
                 foreach (PolicySetting m in matches)
                 {
-                    string gpo = string.IsNullOrEmpty(g.SourceDetail) ? "a GPO" : "GPO '" + g.SourceDetail + "'";
-                    m.Add(FindingKinds.Conflict, "Group Policy also sets this: " + gpo + " sets " + g.Area + "\\" + g.Name + " = " + g.Value + "." + wins);
-                    g.Add(FindingKinds.Conflict, "MDM also sets this: " + m.Area + "/" + m.Name + " = " + Txt.Short(m.DisplayValue, 120) + " (" + (m.Source ?? Sources.Unknown) + ")." + wins);
+                    string n = note(m) ?? "";
+                    string gpo = string.IsNullOrEmpty(g.SourceDetail) ? "Group Policy" : "Group Policy '" + g.SourceDetail + "'";
+                    m.Add(FindingKinds.Conflict, "Also set by " + gpo + " (" + g.Area + "\\" + g.Name + " = " + g.Value + ")." + n);
+                    g.Add(FindingKinds.Conflict, "Also set by MDM (" + m.Area + "/" + m.Name + " = " + Txt.Short(m.DisplayValue, 120) + ", " + (m.Source ?? Sources.Unknown) + ")." + n);
                 }
             }
         }

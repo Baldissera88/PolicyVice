@@ -619,33 +619,10 @@ namespace PolicyVice
 
         static void Correlate(IRegSource reg, Snapshot s, AdmxCatalog catalog)
         {
-            Dictionary<AdmxPolicy, List<PolicySetting>> gpByAdmx = new Dictionary<AdmxPolicy, List<PolicySetting>>();
-            foreach (PolicySetting p in s.Settings)
-            {
-                if (p.Layer != Layers.Registry || p.Source != Sources.GroupPolicy) continue;
-                AdmxPolicy a = catalog.ForValue(@"Software\Policies\" + p.Area, p.Name == "(Default)" ? "" : p.Name);
-                if (a == null) continue;
-                List<PolicySetting> l;
-                if (!gpByAdmx.TryGetValue(a, out l)) { l = new List<PolicySetting>(); gpByAdmx[a] = l; }
-                l.Add(p);
-            }
+            // Names, value meanings and the conflicts that can be matched setting by setting.
+            Enricher.Apply(s, CspCatalog.Embedded(), catalog, delegate (PolicySetting m) { return WinsNote(s, reg, m, m.Area); });
 
-            foreach (PolicySetting m in s.Settings)
-            {
-                if (m.Layer != Layers.Mdm) continue;
-                AdmxPolicy a = catalog.ForMdm(m.Area, m.Name);
-                List<PolicySetting> gps;
-                if (a == null || !gpByAdmx.TryGetValue(a, out gps)) continue;
-                string note = WinsNote(s, reg, m, m.Area);
-                foreach (PolicySetting g in gps)
-                {
-                    if (g.Scope != m.Scope) continue;
-                    if (m.Scope == "User" && !string.Equals(g.UserSid, m.UserSid, StringComparison.OrdinalIgnoreCase)) continue;
-                    m.Add(FindingKinds.Conflict, "Also set by Group Policy '" + g.SourceDetail + "' (" + g.Area + "\\" + g.Name + " = " + g.Value + ")." + note);
-                    g.Add(FindingKinds.Conflict, "Also set by MDM (" + m.Area + "/" + m.Name + ", " + (m.Source ?? Sources.Unknown) + ")." + note);
-                }
-            }
-
+            // Group Policy in an area that MDM also configures, when no exact match was found above.
             for (int i = 0; i < Overlaps.GetLength(0); i++)
             {
                 string area = Overlaps[i, 0], key = Overlaps[i, 1];
