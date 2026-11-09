@@ -158,7 +158,8 @@ namespace PolicyVice
 
     public static class Fonts
     {
-        public static Font Ui, UiSemibold, Small, Title, Mono, Icons;
+        public static Font Ui, UiSemibold, Small, SmallSemibold, Title, Mono, MonoSmall, Icons, IconsSmall;
+        public static string UiName = "", MonoName = "";
 
         public static void Init()
         {
@@ -179,9 +180,14 @@ namespace PolicyVice
             Ui = new Font(ui, 9.75f);
             UiSemibold = semi != null ? new Font(semi, 9.75f) : new Font(ui, 9.75f, FontStyle.Bold);
             Small = new Font(ui, 8.25f);
+            SmallSemibold = semi != null ? new Font(semi, 8.25f) : new Font(ui, 8.25f, FontStyle.Bold);
             Title = disp != null ? new Font(disp, 14f) : new Font(ui, 14f, FontStyle.Bold);
             Mono = mono != null ? new Font(mono, 9.25f) : new Font(FontFamily.GenericMonospace, 9.25f);
+            MonoSmall = mono != null ? new Font(mono, 8.25f) : new Font(FontFamily.GenericMonospace, 8.25f);
             Icons = icons != null ? new Font(icons, 10.5f) : null;
+            IconsSmall = icons != null ? new Font(icons, 7.5f) : null;
+            UiName = Ui.Name;
+            MonoName = Mono.Name;
         }
 
         static string Pick(Dictionary<string, bool> installed, string fallback, params string[] names)
@@ -206,9 +212,56 @@ namespace PolicyVice
         public const string Search = "";
     }
 
+    // More glyphs from Segoe Fluent Icons and Segoe MDL2 Assets, by code point.
+    public static class Glyphs2
+    {
+        public const string Sync = "";
+        public const string Settings = "";
+        public const string Back = "";
+        public const string Palette = "";
+        public const string Calendar = "";
+        public const string Folder = "";
+        public const string Reset = "";
+        public const string Keyboard = "";
+        public const string Code = "";
+        public const string Apps = "";
+        public const string Device = "";
+        public const string Help = "";
+        public const string Clock = "";
+    }
+
     public static class Prefs
     {
         const string Key = @"Software\PolicyVice";
+
+        public static string Location
+        {
+            get { return @"HKEY_CURRENT_USER\" + Key; }
+        }
+
+        public static bool GetBool(string name, bool fallback)
+        {
+            string v = Get(name, null);
+            if (v == null) return fallback;
+            return v == "1" || string.Equals(v, "true", StringComparison.OrdinalIgnoreCase);
+        }
+
+        public static void SetBool(string name, bool value)
+        {
+            Set(name, value ? "1" : "0");
+        }
+
+        public static int GetInt(string name, int fallback, int min, int max)
+        {
+            int n = GetInt(name, fallback);
+            return n < min ? min : n > max ? max : n;
+        }
+
+        // Removes every PolicyVice setting of this user.
+        public static void Reset()
+        {
+            try { Registry.CurrentUser.DeleteSubKeyTree(Key, false); } catch (Exception) { }
+        }
 
         public static string Get(string name, string fallback)
         {
