@@ -34,6 +34,7 @@ Names, value meanings, descriptions and Group Policy counterparts come from Micr
 | **Error** | The DeviceManagement event log has a failure for this CSP URI in the last 7 days. |
 | **Orphan** | The value is in `PolicyManager\current`, but no MDM provider sent it. A removed profile or enrollment may have left it behind. |
 | **Unmanaged** | A value under `HKLM\SOFTWARE\Policies` that no GPO and no MDM setting claims. It is often tattooed, or written by a script or an app. |
+| **Overlap** | A hint, not counted: a GPO sets something in an area that MDM also configures, such as Windows Update, but not the same setting. |
 
 Click a count at the top to filter on it.
 
@@ -92,7 +93,7 @@ $p.ExitCode
 | MDM providers | `PolicyManager\providers\<enrollment ID>\default` |
 | Enrollments | `HKLM\SOFTWARE\Microsoft\Enrollments` |
 | Ingested ADMX | `PolicyManager\AdmxInstalled` and `%ProgramData%\Microsoft\PolicyManager\ADMXIngestion` |
-| Policy registry | `HKLM\SOFTWARE\Policies`, `HKCU\SOFTWARE\Policies` and `HKU\<SID>\SOFTWARE\Policies` for MDM users |
+| Policy registry | `SOFTWARE\Policies` and `SOFTWARE\Microsoft\Windows\CurrentVersion\Policies` in HKLM, HKCU, and HKU for MDM users and the signed-in user |
 | Group Policy | WMI `root\RSOP\Computer` and `root\RSOP\User\<SID>`, `RSOP_RegistryPolicySetting` and `RSOP_GPO` |
 | Intune apps and scripts | `HKLM\SOFTWARE\Microsoft\IntuneManagementExtension`, and app names from the IME logs |
 | Device | The Windows join APIs, `CloudDomainJoin`, `Enrollments`, `Provisioning\OMADM` and `SOFTWARE\Microsoft\CCM` |

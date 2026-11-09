@@ -12,6 +12,10 @@
 - Exact conflict detection through the ADMX policy or the documented registry value, for every documented Policy CSP setting
 - User Group Policy from Resultant Set of Policy, so user policy values show their GPO
 - **Sync** button that starts Windows' MDM sync task, and an option to start Watch after a sync
+- `SOFTWARE\Microsoft\Windows\CurrentVersion\Policies` is read and watched, with Group Policy and MDM owners, so settings like HideFastUserSwitching are covered
+- Values written by ADMX-backed MDM settings, such as security baselines, device control and OneDrive, are attributed to MDM
+- Settings that Windows failed to apply are listed with one Error finding each, with the number of failures
+- The signed-in user's policy is read when PolicyVice runs as another administrator account
 - Settings and About windows, F1 and Ctrl+, shortcuts
 - Copy cell, row or all rows from every grid, and Ctrl+C
 - HTML report with Device and Intune apps and scripts sections; CSV with the value meaning and Group Policy counterpart
@@ -23,7 +27,11 @@
 - A source that fails or times out no longer stops the rest; reading Group Policy can no longer hang the app
 - A winning provider that is not an MDM enrollment shows as Unknown instead of Other MDM
 - No Orphan findings when a provider key could not be read
-- More MDM event formats are parsed, including events without a message text
+- More MDM event formats are parsed, including events without a message text, and messages are read in the Windows display language so they are not empty with Danish regional settings
+- Area matches between Group Policy and MDM are now an Overlap hint instead of a Conflict
+- The watch log no longer shows changes of source only, and a manual refresh while watching no longer hides changes
+- The CSV uses the list separator of the regional format, so it opens in columns in Excel
+- Saved reports open in the signed-in user's browser, not as administrator; Windows DLLs load from System32 only
 - A refresh requested while reading is queued instead of lost
 - Errors in buttons and menus show in the status bar instead of closing the app
 
