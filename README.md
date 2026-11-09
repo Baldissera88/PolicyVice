@@ -66,7 +66,13 @@ The **LogVice** button opens the MDM event logs, the Intune Management Extension
 
 ## Download and install
 
-Download `PolicyVice.exe` to run it without installing, or `PolicyVice.msi` to install it for all users:
+Install it with winget, once the package is published there:
+
+```powershell
+winget install DanielBaldissera.PolicyVice
+```
+
+Or download `PolicyVice.exe` from [Releases](../../releases) to run it without installing, or `PolicyVice.msi` to install it for all users:
 
 ```powershell
 msiexec /i PolicyVice.msi /qn

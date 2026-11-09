@@ -116,3 +116,49 @@ jobs:
             echo "| Uninstall | \`msiexec /x ${{ steps.info.outputs.code }} /qn\` |"
           } > notes.md
           gh release edit "$GITHUB_REF_NAME" --notes-file notes.md
+
+      - name: Write winget manifests
+        if: github.event_name == 'release'
+        run: ./winget/manifests.sh "${{ steps.info.outputs.version }}" PolicyVice.msi release-notes.md out/winget
+
+      - name: Keep the winget manifests
+        if: github.event_name == 'release'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: winget-${{ steps.info.outputs.version }}
+          path: out/winget
+
+  winget:
+    needs: build
+    if: github.event_name == 'release' && !github.event.release.prerelease
+    runs-on: windows-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Get the winget manifests
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: winget-${{ needs.build.outputs.version }}
+          path: winget
+
+      - name: Submit to winget
+        shell: pwsh
+        env:
+          WINGET_TOKEN: ${{ secrets.WINGET_TOKEN }}
+          VERSION: ${{ needs.build.outputs.version }}
+        run: |
+          $manifest = Join-Path -Path $PWD -ChildPath "winget\manifests\d\DanielBaldissera\PolicyVice\$env:VERSION"
+          if (-not $env:WINGET_TOKEN) {
+              Write-Output "::notice::The WINGET_TOKEN secret is not set, so nothing was submitted. Download the winget-$env:VERSION artifact and run: wingetcreate submit <folder>"
+              exit 0
+          }
+          $exe = Join-Path -Path $env:RUNNER_TEMP -ChildPath 'wingetcreate.exe'
+          Invoke-WebRequest -Uri 'https://github.com/microsoft/winget-create/releases/download/v1.12.13.0/wingetcreate.exe' -OutFile $exe
+          $hash = (Get-FileHash -Path $exe -Algorithm SHA256).Hash
+          if ($hash -ne '24042BD37915805615E6CF969AC57C6439124C3FE85823327F5F3FB24BD9FFEA') {
+              throw "wingetcreate.exe has an unexpected SHA256: $hash"
+          }
+          & $exe submit --token $env:WINGET_TOKEN --no-open $manifest
+          if ($LASTEXITCODE -ne 0) {
+              throw "wingetcreate failed with exit code $LASTEXITCODE."
+          }
