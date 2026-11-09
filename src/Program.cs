@@ -163,6 +163,9 @@ namespace PolicyVice
             // The registry has only app IDs. The Intune Management Extension logs name them.
             try { ImeLog.FillNamesFromFolder(s.Intune, ImeLog.DefaultFolder); }
             catch (Exception) { }
+            // Names saved from Intune with "Get names from Intune" replace the log names, also for scripts and remediations.
+            try { NameCache.Apply(s.Intune, NameCache.Load(s.Device.Get("Tenant ID"))); }
+            catch (Exception) { }
             return s;
         }
 

@@ -374,7 +374,7 @@ namespace PolicyVice.Tests
             // Exports.
             string html = Report.Html(s);
             Check(html.Contains("PC-0042") && html.Contains("Baseline - RDP") && html.Contains("Findings"), "HTML report");
-            Check(!html.Contains("<enabled/>") && html.Contains("&lt;enabled/&gt;"), "HTML encoded");
+            Check(!html.Contains("<enabled/>") && !html.Contains("<data "), "HTML encoded, ADMX values in words");
             string csv = Path.Combine(dir, "out.csv");
             Report.Csv(s, csv);
             string[] lines = File.ReadAllLines(csv);

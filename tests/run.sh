@@ -3,7 +3,7 @@
 set -e
 cd "$(dirname "$0")/.."
 API=/usr/lib/mono/4.5-api
-SRC=$(ls src/*.cs | grep -v -e '/Ui\.' -e '/Program\.cs$' -e '/LogViceLink\.cs$' -e '/Demo\.cs$' | sort)
+SRC=$(ls src/*.cs | grep -v -e '/Ui\.' -e '/Program\.cs$' -e '/LogViceLink\.cs$' -e '/Demo\.cs$' -e '/Graph\.cs$' | sort)
 RES=""
 for f in res/*; do [ -f "$f" ] && RES="$RES -resource:$f,$(basename "$f")"; done
 mcs -langversion:5 -target:exe -warn:4 -warnaserror+ -noconfig -nostdlib \

@@ -109,10 +109,22 @@ namespace PolicyVice
         // The registry key of a policy value without its hive, such as Software\Policies\Microsoft\Windows\System.
         [DataMember] public string PolicyKey;
 
-        // The value with its documented meaning, such as "1 (Allowed)".
+        [DataMember] public string UserName;
+
+        // The value with its documented meaning, such as "1 (Allowed)". ADMX-backed values are shown in words only.
         public string DisplayValue
         {
-            get { return string.IsNullOrEmpty(ValueMeaning) ? Value : Value + " (" + ValueMeaning + ")"; }
+            get
+            {
+                if (string.IsNullOrEmpty(ValueMeaning)) return Value;
+                if (Value != null && Value.TrimStart().StartsWith("<", StringComparison.Ordinal)) return ValueMeaning;
+                return Value + " (" + ValueMeaning + ")";
+            }
+        }
+
+        public string AreaName
+        {
+            get { return Layer == Layers.Mdm ? Names.Area(Area) : Area; }
         }
 
         public string Key
@@ -152,6 +164,12 @@ namespace PolicyVice
         [DataMember] public string Area;
         [DataMember] public string Name;
         [DataMember] public string Scope;
+        [DataMember] public string FriendlyName;
+
+        public string Setting
+        {
+            get { return !string.IsNullOrEmpty(FriendlyName) ? FriendlyName : Area == null ? "" : Area + "/" + Name; }
+        }
     }
 
     [DataContract]

@@ -38,6 +38,14 @@ Names, value meanings, descriptions and Group Policy counterparts come from Micr
 
 Click a count at the top to filter on it.
 
+## Names instead of IDs
+
+PolicyVice shows names wherever Windows stores an ID or a code: user names instead of SIDs and Intune user object IDs, the provider and user instead of enrollment GUIDs, readable areas, and ADMX-backed values in words.
+
+Win32 app names come from the Intune Management Extension logs. Platform scripts and remediations have no name on the device, so press **Get names from Intune** on the Intune apps and scripts tab to look them up. PolicyVice signs in to Microsoft Graph with a device code, read-only, and reads only the names of apps, platform scripts and remediations. It uses the Microsoft Graph Command Line Tools app by default, or the client ID set in **Settings**. The account needs to be able to read Intune apps and scripts, and the app needs consent for `DeviceManagementApps.Read.All`, `DeviceManagementScripts.Read.All` and `DeviceManagementConfiguration.Read.All`.
+
+The names are saved per tenant in `%LOCALAPPDATA%\PolicyVice`, so they show next time without signing in. The sign-in itself is not saved. **Settings > Forget saved names** removes them.
+
 ## Watch and compare
 
 **Watch** follows `PolicyManager\current` and the `Policies` keys while PolicyVice is open. Every time they change, it reads the device again and records what was added, removed or changed, together with the MDM events from two minutes around it. This catches policy that disappears, such as keys wiped by another tool.
@@ -109,7 +117,8 @@ Where each location comes from, and what is documented by Microsoft or only obse
 - The Policy CSP catalog is from Microsoft's documentation as of July 2025. Settings added later get their name from the setting itself, such as `AllowAutoUpdate` shown as Allow Auto Update, and have no value meanings.
 - Some Policy CSP settings and their Group Policy counterparts mean the opposite of each other, such as `AllowRealtimeMonitoring` and *Turn off real-time protection*. PolicyVice shows both values but does not judge whether they agree.
 - Security settings without a registry value, such as audit policy and user rights, are not matched to Group Policy.
-- Intune app names come from the IME logs. Apps that have not been processed since the logs rolled over show their ID. Scripts and remediations always show their ID.
+- Without **Get names from Intune**, app names come from the IME logs, so apps that have not been processed since the logs rolled over show their ID, and scripts and remediations always do.
+- **Get names from Intune** uses the device code flow. Tenants that block device code sign-in with Conditional Access need an exception, or names stay as IDs.
 - Watch only runs while PolicyVice is open.
 - The exe and MSI are unsigned. SmartScreen warns on downloaded copies, and AppLocker or WDAC need them signed with your own certificate.
 
@@ -156,6 +165,7 @@ PolicyVice is plain C# 5 and Windows Forms on .NET Framework 4.5, with no NuGet 
 | `src/Collect.cs` | Reads the device and finds conflicts, errors, orphans and unmanaged values |
 | `src/Device.cs` | Join state, tenant, MDM and Configuration Manager details |
 | `src/Ime.cs` | Win32 apps, platform scripts and remediations from the Intune Management Extension |
+| `src/Names.cs`, `src/Graph.cs` | User names, readable areas and values, and names from Intune with the saved name cache |
 | `src/CspCatalog.cs`, `src/Enrich.cs` | The Policy CSP catalog, and the names, value meanings and conflicts it gives |
 | `src/Diff.cs` | Snapshot comparison and the registry watcher |
 | `src/Report.cs` | HTML and CSV export |

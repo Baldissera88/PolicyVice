@@ -87,6 +87,7 @@ namespace PolicyVice
             Step(s, "Policy registry", delegate { ReadPolicyRegistry(reg, s, catalog, gp, rsop as IUserRsopSource, opt); });
             if (events != null && opt.EventDays > 0) Step(s, "MDM events", delegate { ReadErrors(events, s, opt); });
             Step(s, "Findings", delegate { Correlate(reg, s, catalog); });
+            Step(s, "Names", delegate { Name(reg, s); });
             Step(s, "Access denied list", delegate
             {
                 foreach (string d in reg.Denied) if (!s.AccessDenied.Contains(d)) s.AccessDenied.Add(d);
@@ -236,7 +237,7 @@ namespace PolicyVice
                             else
                             {
                                 c.Source = e.IsIntune ? Sources.Intune : Sources.OtherMdm;
-                                c.Detail = (e.IsIntune ? "" : e.ProviderId + ", ") + (string.IsNullOrEmpty(e.Upn) ? "" : e.Upn + ", ") + "enrollment " + provider;
+                                c.Detail = (e.IsIntune ? "" : e.ProviderId + ", ") + (string.IsNullOrEmpty(e.Upn) ? "enrollment " + provider : e.Upn);
                             }
                             c.ProviderId = provider;
                             c.Value = v == null ? "" : v.Data;
@@ -684,6 +685,37 @@ namespace PolicyVice
             return s.MdmWinsOverGp
                 ? " MDMWinsOverGP is on. It blocks the Group Policy value only for Policy CSP settings that have an equivalent Group Policy."
                 : " MDMWinsOverGP is off, so there is no guarantee which one wins.";
+        }
+
+        // User names for SIDs and object IDs, names for the settings in MDM events, and enrollments by user.
+        static void Name(IRegSource reg, Snapshot s)
+        {
+            Names.Users users = new Names.Users(reg, s);
+            foreach (PolicySetting p in s.Settings)
+                if (!string.IsNullOrEmpty(p.UserSid)) p.UserName = users.Name(p.UserSid);
+            foreach (ImeItem it in s.Intune)
+            {
+                if (!Names.IsGuid(it.User)) continue;
+                string n = users.NameForObjectId(it.User);
+                if (n == null) continue;
+                it.UserId = it.User;
+                it.User = n;
+                it.Detail = (it.Detail ?? "").TrimEnd() + "\r\nUser object ID: " + it.UserId;
+            }
+            CspCatalog csp = CspCatalog.Embedded();
+            Dictionary<string, PolicySetting> mdm = new Dictionary<string, PolicySetting>(StringComparer.OrdinalIgnoreCase);
+            foreach (PolicySetting p in s.Settings) if (p.Layer == Layers.Mdm && !mdm.ContainsKey(p.Area + "/" + p.Name)) mdm[p.Area + "/" + p.Name] = p;
+            foreach (MdmError e in s.Errors)
+            {
+                if (string.IsNullOrEmpty(e.Area) || string.IsNullOrEmpty(e.Name)) continue;
+                PolicySetting p;
+                if (mdm.TryGetValue(e.Area + "/" + e.Name, out p)) e.FriendlyName = p.DisplayName;
+                else
+                {
+                    CspEntry c = csp.Find(e.Area, e.Name);
+                    e.FriendlyName = c != null && (c.AdmxBacked || e.Area.StartsWith("ADMX_", StringComparison.OrdinalIgnoreCase)) && !string.IsNullOrEmpty(c.FriendlyName) ? c.FriendlyName : Txt.SplitCamel(e.Name);
+                }
+            }
         }
 
         static void Correlate(IRegSource reg, Snapshot s, AdmxCatalog catalog)

@@ -22,6 +22,7 @@ namespace PolicyVice
         [DataMember] public bool Failed;
         [DataMember] public string Detail;
         [DataMember] public string RegistryPath;
+        [DataMember] public string UserId;
         [DataMember] public string Assignment;
 
         public string DisplayName

@@ -44,7 +44,7 @@ namespace PolicyVice
         {
             CspEntry e = csp.Find(p.Area, p.Name);
             bool admxBacked = IsAdmxValue(p.Value);
-            if (admxBacked) p.ValueMeaning = p.Value.TrimStart().StartsWith("<disabled", StringComparison.OrdinalIgnoreCase) ? "Disabled" : "Enabled";
+            if (admxBacked) p.ValueMeaning = Names.AdmxValue(p.Value);
             if (e == null) return;
             if (!admxBacked) p.ValueMeaning = Short(CspCatalog.Meaning(e, p.Value));
             if (string.IsNullOrEmpty(p.Description)) p.Description = e.Description;
@@ -56,7 +56,9 @@ namespace PolicyVice
             // ADMX-backed settings carry the Group Policy name. Other Policy CSP settings keep their own name, because the
             // Group Policy counterpart can mean the opposite (AllowRealtimeMonitoring and "Turn off real-time protection").
             bool plainName = string.IsNullOrEmpty(p.FriendlyName) || p.FriendlyName == Txt.SplitCamel(p.Name);
-            if (plainName && (e.AdmxBacked || p.Area.StartsWith("ADMX_", StringComparison.OrdinalIgnoreCase)) && !string.IsNullOrEmpty(e.FriendlyName))
+            // Security options and user rights carry the same names as in Group Policy, such as "Interactive logon: Don't display last signed-in".
+            bool sameAsGp = string.Equals(p.Area, "LocalPoliciesSecurityOptions", StringComparison.OrdinalIgnoreCase) || string.Equals(p.Area, "UserRights", StringComparison.OrdinalIgnoreCase);
+            if (plainName && (e.AdmxBacked || sameAsGp || p.Area.StartsWith("ADMX_", StringComparison.OrdinalIgnoreCase)) && !string.IsNullOrEmpty(e.FriendlyName))
                 p.FriendlyName = e.FriendlyName;
         }
 

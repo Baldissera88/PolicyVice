@@ -163,10 +163,10 @@ namespace PolicyVice
 
             if (s.Errors.Count > 0)
             {
-                b.Append("<h2>MDM events, last ").Append(s.EventDays).Append(" days</h2><div class=\"wrap\"><table><tr><th>Time</th><th>Event</th><th>Level</th><th>CSP URI</th><th>Result</th></tr>");
+                b.Append("<h2>MDM events, last ").Append(s.EventDays).Append(" days</h2><div class=\"wrap\"><table><tr><th>Time</th><th>Event</th><th>Level</th><th>Setting</th><th>CSP URI</th><th>Result</th></tr>");
                 foreach (MdmError e in s.Errors)
                     b.Append("<tr><td>").Append(e.Time.ToString("yyyy-MM-dd HH:mm:ss", Inv)).Append("</td><td>").Append(e.EventId).Append("</td><td>").Append(H(e.Level))
-                     .Append("</td><td class=\"v\">").Append(H(e.CspUri)).Append("</td><td>").Append(H(e.Result ?? Txt.Short(e.Message, 160))).Append("</td></tr>");
+                     .Append("</td><td>").Append(H(e.Setting)).Append("</td><td class=\"v\">").Append(H(e.CspUri)).Append("</td><td>").Append(H(e.Result ?? Txt.Short(e.Message, 160))).Append("</td></tr>");
                 b.Append("</table></div>");
             }
             Foot(b, s.ToolVersion);
@@ -202,7 +202,7 @@ namespace PolicyVice
             b.Append("</tr>");
             foreach (PolicySetting p in list)
             {
-                b.Append("<tr><td>").Append(H(p.Layer)).Append("</td><td>").Append(H(p.Scope)).Append("</td><td>").Append(H(p.Area)).Append("</td><td title=\"").Append(H(p.Name)).Append("\">")
+                b.Append("<tr><td>").Append(H(p.Layer)).Append("</td><td>").Append(H(p.Scope)).Append("</td><td>").Append(H(p.AreaName)).Append("</td><td title=\"").Append(H(p.Name)).Append("\">")
                  .Append(H(p.DisplayName)).Append("</td><td class=\"v\">").Append(H(Txt.Short(p.DisplayValue, 400))).Append("</td><td>").Append(H(p.Source));
                 if (!string.IsNullOrEmpty(p.SourceDetail)) b.Append("<br><span class=\"note\">").Append(H(p.SourceDetail)).Append("</span>");
                 b.Append("</td>");

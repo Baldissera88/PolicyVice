@@ -662,9 +662,14 @@ namespace PolicyVice
         public event EventHandler ThemeChanged;
         public bool DaysChanged, RestartRequested;
         readonly SettingRow logViceRow;
+        readonly SettingRow namesRow;
+        readonly string tenantId;
 
-        public SettingsDialog(Theme t) : base("PolicyVice settings", t)
+        public SettingsDialog(Theme t) : this(t, null) { }
+
+        public SettingsDialog(Theme t, string tenant) : base("PolicyVice settings", t)
         {
+            tenantId = tenant;
             string[] themes = { "System", "Light", "Dark", "Vice" };
             Segmented segTheme = new Segmented(themes);
             int ti = Array.IndexOf(themes, Prefs.Get("Theme", "System"));
@@ -726,6 +731,31 @@ namespace PolicyVice
             Add(new SettingRow(Glyphs2.Sync, "Start Watch after Sync", "Turn on Watch when a sync starts, so every policy change it brings is recorded on the Changes tab with the MDM events around it.", watch));
             Add(new SectionTitle("LogVice"));
             Add(logViceRow);
+
+            TextBox client = new TextBox();
+            client.Width = Dpi.S(300);
+            client.Font = Fonts.Mono;
+            client.BorderStyle = BorderStyle.FixedSingle;
+            client.BackColor = t.Field;
+            client.ForeColor = t.Text;
+            client.Text = Prefs.Get("GraphClientId", "");
+            client.TextChanged += Safe.Wrap(delegate
+            {
+                string v = client.Text.Trim();
+                if (v.Length == 0) Prefs.Set("GraphClientId", null);
+                else if (Names.IsGuid(v)) Prefs.Set("GraphClientId", v);
+            });
+            FlatButton bForget = SmallButton("Forget saved names", delegate
+            {
+                NameCache.Delete(tenantId);
+                namesRow.Desc = "No names saved for this tenant.";
+                Relayout();
+            });
+            Add(new SectionTitle("Names from Intune"));
+            Add(new SettingRow(Glyphs2.Code, "Client ID", "The app registration that \"Get names from Intune\" signs in with. Leave it empty to use Microsoft Graph Command Line Tools (" + Graph.DefaultClientId + "). Your own app needs the delegated permissions DeviceManagementApps.Read.All, DeviceManagementScripts.Read.All and DeviceManagementConfiguration.Read.All, and public client flows turned on.", client));
+            DateTime? saved = NameCache.Updated(tenantId);
+            namesRow = new SettingRow(Glyphs2.Apps, "Saved names", saved.HasValue ? "Names of apps and scripts for this tenant, saved " + saved.Value.ToString("yyyy-MM-dd HH:mm", System.Globalization.CultureInfo.InvariantCulture) + " in " + NameCache.Folder + "." : "No names saved for this tenant.", new ButtonStrip(bForget));
+            Add(namesRow);
             SettingRow store = new SettingRow(Glyphs2.Settings, "Where settings are stored", Prefs.Location, null);
             store.MonoDesc = true;
             Add(new SectionTitle("Data"));

@@ -1,10 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
-  <Product Id="51E54402-6D7B-4FE5-8C38-9BFC9EA70393"
+  <Product Id="9A22769E-BE78-439D-A5D7-6C8FE55D429F"
            Name="PolicyVice"
            Language="1033"
            Codepage="1252"
-           Version="0.2.0"
+           Version="0.3.0"
            Manufacturer="Daniel L. Baldissera"
            UpgradeCode="3C84D289-D136-4103-B7CB-9E978F088172">
 
@@ -33,7 +33,7 @@
         <Directory Id="INSTALLDIR" Name="PolicyVice">
 
           <Component Id="PolicyViceExe" Guid="7E32574D-347F-41D9-A29E-453066F94B6E" Win64="yes">
-            <File Id="PolicyViceExe" Name="PolicyVice.exe" Source="PolicyVice.exe" KeyPath="yes" DefaultVersion="0.2.0.0">
+            <File Id="PolicyViceExe" Name="PolicyVice.exe" Source="PolicyVice.exe" KeyPath="yes" DefaultVersion="0.3.0.0">
               <Shortcut Id="StartMenuShortcut"
                         Directory="ProgramMenuFolder"
                         Name="PolicyVice"

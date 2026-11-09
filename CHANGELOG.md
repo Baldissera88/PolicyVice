@@ -1,5 +1,19 @@
 # Changelog
 
+## PolicyVice 0.3.0
+
+9 November 2026. Friendly names instead of IDs and codes.
+
+- **Get names from Intune** on the Intune apps and scripts tab: an optional, read-only sign-in to Microsoft Graph with a device code. It reads the names of apps, platform scripts and remediations, and saves them per tenant on this computer, so they show next time without signing in. The sign-in itself is not saved.
+- Sign-in uses the Microsoft Graph Command Line Tools app by default; another client ID can be set in **Settings**, where saved names can also be removed
+- User names instead of SIDs and Intune user object IDs, from the enrollments, the Windows sign-in cache and the user profiles
+- Readable areas, such as *Terminal Server (ADMX)* and *Office 16: Microsoft Office System > Security Settings*
+- ADMX-backed values in words, such as *Enabled, KFM Silent Opt In Box: tenant ID*, instead of `<enabled/><data … />`
+- Security options and user rights use their Group Policy names, such as *Interactive logon: Don't display last signed-in*
+- The provider of a setting is shown as *Intune · user* instead of the enrollment GUID
+- MDM events show the name of the setting they are about
+
+
 ## PolicyVice 0.2.0
 
 9 November 2026.

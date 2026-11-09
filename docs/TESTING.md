@@ -44,7 +44,9 @@ Compare with the managed policies in the MDM diagnostics report.
 - [ ] Pick five settings you know from Intune, such as one from Windows Update rings, Defender, a settings catalog profile, an ADMX-backed setting and an ingested ADMX setting like OneDrive. Each one has:
   - [ ] the right value
   - [ ] source **Intune**, with your UPN or the enrollment in the details
-  - [ ] a readable name instead of the raw setting name
+  - [ ] a readable name instead of the raw setting name, and a readable area
+  - [ ] ADMX-backed values in words, such as *Enabled*, instead of `<enabled/>`
+  - [ ] **Winning provider** shows *Intune · your UPN*
   - [ ] a value with its meaning, for example `1 (Allowed)`, where the docs define one
 - [ ] User-scoped settings, if you have any, show scope **User**.
 - [ ] Note any setting with source **Unknown**, and whether you expected it to have an owner.
@@ -73,6 +75,9 @@ Compare with the app and script status in the Intune portal, or Company Portal o
 - [ ] Win32 apps are listed with the right status. A failed app shows its error code and meaning.
 - [ ] App names are shown, not only IDs. They come from the IME logs, so new apps may still show only an ID.
 - [ ] Platform scripts and remediations are listed with the right result.
+- [ ] The **User** column shows user names, not GUIDs.
+- [ ] Press **Get names from Intune**, sign in with the code, and check that apps, scripts and remediations now show their Intune names. If a list cannot be read, the status bar says which and why.
+- [ ] Close and start PolicyVice again: the names are still there without signing in.
 
 ## 7. Watch, snapshots and compare
 

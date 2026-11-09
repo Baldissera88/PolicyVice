@@ -43,6 +43,7 @@ namespace PolicyVice
         readonly ComboBox kindBox = Combo("All kinds");
         readonly FlatButton bFailedOnly = new FlatButton("Failed only", null);
         readonly FlatButton bImeLogs = new FlatButton("Open IME logs in LogVice", Glyphs.Log);
+        readonly FlatButton bNames = new FlatButton("Get names from Intune", null);
         readonly DeviceView deviceView = new DeviceView();
         bool imeFailedOnly;
 
@@ -259,7 +260,7 @@ namespace PolicyVice
             settings.Grid.Columns[1].DefaultCellStyle.Font = Fonts.Mono;
             settings.Col("Source", 96, delegate (PolicySetting p) { return p.Source; });
             settings.Col("Findings", 104, delegate (PolicySetting p) { return Kinds(p); });
-            settings.Col("Area", 150, delegate (PolicySetting p) { return p.Area; }).Fill = true;
+            settings.Col("Area", 150, delegate (PolicySetting p) { return p.AreaName; }).Fill = true;
             settings.Col("Scope", 62, delegate (PolicySetting p) { return p.Scope; });
             settings.Col("Layer", 66, delegate (PolicySetting p) { return p.Layer; });
             settings.ForeColor = delegate (PolicySetting p)
@@ -294,9 +295,14 @@ namespace PolicyVice
             bImeLogs.Click += Safe.Wrap(delegate { OpenInLogVice(LogViceLink.ImeLogs()); });
             Tip(bImeLogs, "Open IntuneManagementExtension.log, and AppWorkload.log when it exists, in LogVice");
             Tip(bFailedOnly, "Show only the apps and scripts that failed");
+            bNames.Dock = DockStyle.Right;
+            bNames.Click += Safe.Wrap(delegate { GetNames(); });
+            Tip(bNames, "Sign in to Intune (read-only) to show the names of apps, platform scripts and remediations instead of their IDs");
             themed.Add(bFailedOnly);
             themed.Add(bImeLogs);
+            themed.Add(bNames);
             imeBar.Controls.Add(ifl);
+            imeBar.Controls.Add(bNames);
             imeBar.Controls.Add(bImeLogs);
             filterBar.Add(imeBar);
             filterBar.Add(ifl);
@@ -326,7 +332,7 @@ namespace PolicyVice
             events.Col("Time", 150, delegate (MdmError e) { return e.Time.ToString("yyyy-MM-dd HH:mm:ss", Inv); });
             events.Col("Event", 60, delegate (MdmError e) { return e.EventId.ToString(Inv); });
             events.Col("Level", 80, delegate (MdmError e) { return e.Level; });
-            events.Col("Setting", 200, delegate (MdmError e) { return e.Area == null ? "" : e.Area + "/" + e.Name; }).Fill = true;
+            events.Col("Setting", 200, delegate (MdmError e) { return e.Setting; }).Fill = true;
             events.Col("Result", 220, delegate (MdmError e) { return e.Result ?? Txt.Short(e.Message, 200); }).Fill = true;
             events.ForeColor = delegate (MdmError e) { return e.Level == "Error" ? theme.ErrFg : e.Level == "Warning" ? theme.WarnFg : Color.Empty; };
             events.SelectionChanged += delegate { ShowEvent(events.Current); };
@@ -354,7 +360,7 @@ namespace PolicyVice
             admx.Col("Setting type", 100, delegate (AdmxFile a) { return a.SettingType; });
             admx.Col("File ID", 200, delegate (AdmxFile a) { return a.Id; }).Fill = true;
             admx.Col("Policies read", 100, delegate (AdmxFile a) { return a.Policies.ToString(Inv); });
-            admx.Col("Provider", 300, delegate (AdmxFile a) { return a.ProviderId; }).Fill = true;
+            admx.Col("Provider", 300, delegate (AdmxFile a) { return ProviderName(a.ProviderId); }).Fill = true;
             views[TabAdmx] = Card(admx.Grid);
 
             Panel ch = new Panel();
@@ -376,7 +382,7 @@ namespace PolicyVice
             changes.Col("Time", 150, delegate (Change c) { return c.Time.ToString("yyyy-MM-dd HH:mm:ss", Inv); });
             changes.Col("Change", 80, delegate (Change c) { return c.Kind; });
             changes.Col("Setting", 220, delegate (Change c) { return c.Setting; }).Fill = true;
-            changes.Col("Area", 160, delegate (Change c) { return c.Area; }).Fill = true;
+            changes.Col("Area", 160, delegate (Change c) { return c.Layer == Layers.Mdm ? Names.Area(c.Area) : c.Area; }).Fill = true;
             changes.Col("Before", 140, delegate (Change c) { return c.OldValue; }).Fill = true;
             changes.Col("After", 140, delegate (Change c) { return c.NewValue; }).Fill = true;
             changes.Col("Source", 110, delegate (Change c) { return c.NewSource ?? c.OldSource; });
@@ -853,7 +859,7 @@ namespace PolicyVice
 
         static bool Matches(PolicySetting p, string q)
         {
-            foreach (string f in new string[] { p.FriendlyName, p.Name, p.Area, p.Value, p.ValueMeaning, p.GroupPolicyName, p.Source, p.SourceDetail, p.RegistryPath, p.CspUri })
+            foreach (string f in new string[] { p.FriendlyName, p.Name, p.Area, p.AreaName, p.UserName, p.Value, p.ValueMeaning, p.GroupPolicyName, p.Source, p.SourceDetail, p.RegistryPath, p.CspUri })
                 if (f != null && f.IndexOf(q, StringComparison.OrdinalIgnoreCase) >= 0) return true;
             return false;
         }
@@ -869,6 +875,33 @@ namespace PolicyVice
         void ShowView()
         {
             for (int i = 0; i < views.Length; i++) views[i].Visible = i == tabs.Selected;
+        }
+
+        // An enrollment ID as its provider and user, such as "Intune · anna@contoso.com".
+        string ProviderName(string id)
+        {
+            Enrollment e = snap == null ? null : snap.FindEnrollment(id);
+            if (e == null) return id;
+            return e.ProviderName + (string.IsNullOrEmpty(e.Upn) ? "" : " · " + e.Upn);
+        }
+
+        void GetNames()
+        {
+            if (snap == null) return;
+            if (demo)
+            {
+                Status("Names from Intune are not available with demo data.");
+                return;
+            }
+            string tenant = snap.Device.Get("Tenant ID");
+            using (SignInDialog d = new SignInDialog(theme, tenant))
+            {
+                d.ShowDialog(this);
+                if (d.Names == null) return;
+                int n = NameCache.Apply(snap.Intune, d.Names);
+                BindIntune();
+                Status(n + " apps and scripts named from Intune. " + d.Names.Count + " names saved for next time." + (d.Problems.Count > 0 ? " Not read: " + string.Join("; ", d.Problems.ToArray()) : ""));
+            }
         }
 
         void Status(string text)
@@ -952,11 +985,11 @@ namespace PolicyVice
             Field(r, "Meaning", p.ValueMeaning, false);
             Field(r, "Type", p.ValueKind, false);
             Field(r, "Source", p.Source + (string.IsNullOrEmpty(p.SourceDetail) ? "" : " · " + p.SourceDetail), false);
-            Field(r, "Scope", p.Scope + (p.UserSid != null ? " · " + p.UserSid : ""), false);
+            Field(r, "Scope", p.Scope + (!string.IsNullOrEmpty(p.UserName) ? " · " + p.UserName : "") + (p.UserSid != null ? " · " + p.UserSid : ""), false);
             Field(r, "Name", p.Area + (p.Layer == Layers.Mdm ? "/" : "\\") + p.Name, true);
             Field(r, "CSP URI", p.CspUri, true);
             Field(r, "Registry", p.RegistryPath, true);
-            Field(r, "Winning provider", p.WinningProvider, true);
+            Field(r, "Winning provider", string.IsNullOrEmpty(p.WinningProvider) ? null : ProviderName(p.WinningProvider) == p.WinningProvider ? p.WinningProvider : ProviderName(p.WinningProvider) + "\n" + p.WinningProvider, false);
             Field(r, "Group Policy counterpart", string.IsNullOrEmpty(p.GroupPolicyName) ? null : p.GroupPolicyName + (string.IsNullOrEmpty(p.GroupPolicyPath) ? "" : "\n" + p.GroupPolicyPath), false);
             if (p.Contributions.Count > 0)
             {
@@ -987,6 +1020,7 @@ namespace PolicyVice
             }
             r.AppendText("\n");
             Heading(r, "Event " + e.EventId + " · " + e.Level);
+            Field(r, "Setting", e.FriendlyName, false);
             Field(r, "Time", e.Time.ToString("yyyy-MM-dd HH:mm:ss", Inv), false);
             Field(r, "CSP URI", e.CspUri, true);
             Field(r, "Result", e.Result, false);
@@ -1357,7 +1391,7 @@ namespace PolicyVice
 
         void OpenSettings()
         {
-            using (SettingsDialog d = new SettingsDialog(theme))
+            using (SettingsDialog d = new SettingsDialog(theme, snap != null && !demo ? snap.Device.Get("Tenant ID") : null))
             {
                 d.ThemeChanged += delegate
                 {
