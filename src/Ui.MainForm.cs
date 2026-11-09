@@ -254,7 +254,7 @@ namespace PolicyVice
             filterBar.Add(fl);
 
             settings.Col("Setting", 250, delegate (PolicySetting p) { return p.DisplayName; }).Fill = true;
-            Column<PolicySetting> val = settings.Col("Value", 150, delegate (PolicySetting p) { return p.Value; });
+            Column<PolicySetting> val = settings.Col("Value", 150, delegate (PolicySetting p) { return p.DisplayValue; });
             val.Fill = true;
             settings.Grid.Columns[1].DefaultCellStyle.Font = Fonts.Mono;
             settings.Col("Source", 96, delegate (PolicySetting p) { return p.Source; });
@@ -303,6 +303,7 @@ namespace PolicyVice
             ime.Col("Kind", 110, delegate (ImeItem i) { return i.Kind; });
             ime.Col("Name", 260, delegate (ImeItem i) { return ImeName(i); }).Fill = true;
             ime.Col("Status", 140, delegate (ImeItem i) { return i.Status; });
+            ime.Col("Assignment", 96, delegate (ImeItem i) { return i.Assignment; });
             ime.Col("Error", 110, delegate (ImeItem i) { return i.ErrorCode; });
             ime.Col("Time", 150, delegate (ImeItem i) { return ImeTime(i); });
             ime.Col("User", 180, delegate (ImeItem i) { return i.User; }).Fill = true;
@@ -807,7 +808,7 @@ namespace PolicyVice
 
         static string ImeName(ImeItem i)
         {
-            return string.IsNullOrEmpty(i.Name) ? i.Id : i.Name;
+            return i.DisplayName;
         }
 
         static string ImeTime(ImeItem i)
@@ -851,7 +852,7 @@ namespace PolicyVice
 
         static bool Matches(PolicySetting p, string q)
         {
-            foreach (string f in new string[] { p.FriendlyName, p.Name, p.Area, p.Value, p.Source, p.SourceDetail, p.RegistryPath, p.CspUri })
+            foreach (string f in new string[] { p.FriendlyName, p.Name, p.Area, p.Value, p.ValueMeaning, p.GroupPolicyName, p.Source, p.SourceDetail, p.RegistryPath, p.CspUri })
                 if (f != null && f.IndexOf(q, StringComparison.OrdinalIgnoreCase) >= 0) return true;
             return false;
         }
@@ -947,6 +948,7 @@ namespace PolicyVice
             }
             Section(r, "Setting");
             Field(r, "Value", p.Value, true);
+            Field(r, "Meaning", p.ValueMeaning, false);
             Field(r, "Type", p.ValueKind, false);
             Field(r, "Source", p.Source + (string.IsNullOrEmpty(p.SourceDetail) ? "" : " · " + p.SourceDetail), false);
             Field(r, "Scope", p.Scope + (p.UserSid != null ? " · " + p.UserSid : ""), false);
@@ -954,6 +956,7 @@ namespace PolicyVice
             Field(r, "CSP URI", p.CspUri, true);
             Field(r, "Registry", p.RegistryPath, true);
             Field(r, "Winning provider", p.WinningProvider, true);
+            Field(r, "Group Policy counterpart", string.IsNullOrEmpty(p.GroupPolicyName) ? null : p.GroupPolicyName + (string.IsNullOrEmpty(p.GroupPolicyPath) ? "" : "\n" + p.GroupPolicyPath), false);
             if (p.Contributions.Count > 0)
             {
                 Section(r, "Who sets it");

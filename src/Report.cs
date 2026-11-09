@@ -14,15 +14,15 @@ namespace PolicyVice
         public static void Csv(Snapshot s, string path)
         {
             StringBuilder b = new StringBuilder();
-            b.AppendLine("Layer,Scope,User SID,Area,Name,Friendly name,Value,Type,Source,Source detail,Findings,Registry path,CSP URI");
+            b.AppendLine("Layer,Scope,User SID,Area,Name,Friendly name,Value,Meaning,Type,Source,Source detail,Findings,Registry path,CSP URI,Group Policy counterpart");
             foreach (PolicySetting p in s.Settings)
             {
                 List<string> f = new List<string>();
                 foreach (Finding x in p.Findings) f.Add(x.Kind + ": " + x.Message);
                 b.AppendLine(string.Join(",", new string[]
                 {
-                    C(p.Layer), C(p.Scope), C(p.UserSid), C(p.Area), C(p.Name), C(p.FriendlyName), C(p.Value), C(p.ValueKind),
-                    C(p.Source), C(p.SourceDetail), C(string.Join(" | ", f.ToArray())), C(p.RegistryPath), C(p.CspUri)
+                    C(p.Layer), C(p.Scope), C(p.UserSid), C(p.Area), C(p.Name), C(p.FriendlyName), C(p.Value), C(p.ValueMeaning), C(p.ValueKind),
+                    C(p.Source), C(p.SourceDetail), C(string.Join(" | ", f.ToArray())), C(p.RegistryPath), C(p.CspUri), C(p.GroupPolicyName)
                 }));
             }
             File.WriteAllText(path, b.ToString(), new UTF8Encoding(true));
@@ -186,7 +186,7 @@ namespace PolicyVice
             foreach (PolicySetting p in list)
             {
                 b.Append("<tr><td>").Append(H(p.Layer)).Append("</td><td>").Append(H(p.Scope)).Append("</td><td>").Append(H(p.Area)).Append("</td><td title=\"").Append(H(p.Name)).Append("\">")
-                 .Append(H(p.DisplayName)).Append("</td><td class=\"v\">").Append(H(Txt.Short(p.Value, 400))).Append("</td><td>").Append(H(p.Source));
+                 .Append(H(p.DisplayName)).Append("</td><td class=\"v\">").Append(H(Txt.Short(p.DisplayValue, 400))).Append("</td><td>").Append(H(p.Source));
                 if (!string.IsNullOrEmpty(p.SourceDetail)) b.Append("<br><span class=\"note\">").Append(H(p.SourceDetail)).Append("</span>");
                 b.Append("</td>");
                 if (findings)

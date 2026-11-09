@@ -127,7 +127,11 @@ namespace PolicyVice
 
         public static Snapshot CollectLive(int days)
         {
-            return Collector.Collect(new LiveRegistry(), new LiveRsop(), new LiveEvents(), Catalog(), Options(days));
+            Snapshot s = Collector.Collect(new LiveRegistry(), new LiveRsop(), new LiveEvents(), Catalog(), Options(days));
+            // The registry has only app IDs. The Intune Management Extension logs name them.
+            try { ImeLog.FillNamesFromFolder(s.Intune, ImeLog.DefaultFolder); }
+            catch (Exception) { }
+            return s;
         }
 
         public static bool RestartElevated()

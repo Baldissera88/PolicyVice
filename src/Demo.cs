@@ -166,9 +166,9 @@ namespace PolicyVice
             Mdm(r, dev, prov, "Connectivity", "AllowUSBConnection", 1);
             Mdm(r, dev, prov, "LocalPoliciesSecurityOptions", "InteractiveLogon_DoNotDisplayLastSignedIn", 1);
             Mdm(r, dev, prov, "WindowsLogon", "HideFastUserSwitching", 1);
-            r.Sz(dev + @"\ADMX_TerminalServer", "TS_DISABLE_CONNECTIONS", "<enabled/>");
-            r.Sz(dev + @"\ADMX_TerminalServer", "TS_DISABLE_CONNECTIONS_WinningProvider", Intune);
-            r.Sz(prov + @"\ADMX_TerminalServer", "TS_DISABLE_CONNECTIONS", "<enabled/>");
+            r.Sz(dev + @"\RemoteDesktopServices", "AllowUsersToConnectRemotely", "<enabled/>");
+            r.Sz(dev + @"\RemoteDesktopServices", "AllowUsersToConnectRemotely_WinningProvider", Intune);
+            r.Sz(prov + @"\RemoteDesktopServices", "AllowUsersToConnectRemotely", "<enabled/>");
             string od = "OneDriveNGSCv2~Policy~OneDriveNGSC";
             r.Sz(dev + "\\" + od, "KFMSilentOptIn", "<enabled/><data id=\"KFMSilentOptInBox\" value=\"8a1b3c2d-contoso-tenant\"/>");
             r.Sz(prov + "\\" + od, "KFMSilentOptIn", "<enabled/>");
