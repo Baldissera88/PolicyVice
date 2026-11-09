@@ -158,7 +158,7 @@ namespace PolicyVice
                             f.Id = id;
                             f.Origin = "Registry";
                             RegValue text = reg.Get(tp, id);
-                            if (text != null && text.Data != null && text.Data.IndexOf("<policyDefinitions", StringComparison.OrdinalIgnoreCase) >= 0)
+                            if (text != null && text.Data != null && text.Data.IndexOf("<policyDefinitions", StringComparison.OrdinalIgnoreCase) >= 0 && !catalog.HasFile(app + "_" + id))
                                 f.Policies = catalog.Load(app + "_" + id, text.Data, null, true);
                             s.AdmxFiles.Add(f);
                         }

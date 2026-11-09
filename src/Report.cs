@@ -11,28 +11,45 @@ namespace PolicyVice
     {
         static readonly CultureInfo Inv = CultureInfo.InvariantCulture;
 
+        // The list separator of the regional format, so Excel opens the file in columns, for example ; with Danish settings.
+        static string Sep()
+        {
+            try
+            {
+                string l = CultureInfo.CurrentCulture.TextInfo.ListSeparator;
+                if (l == ";" || l == ",") return l;
+            }
+            catch (Exception) { }
+            return ",";
+        }
+
         public static void Csv(Snapshot s, string path)
         {
+            Csv(s, path, Sep());
+        }
+
+        public static void Csv(Snapshot s, string path, string sep)
+        {
             StringBuilder b = new StringBuilder();
-            b.AppendLine("Layer,Scope,User SID,Area,Name,Friendly name,Value,Meaning,Type,Source,Source detail,Findings,Registry path,CSP URI,Group Policy counterpart");
+            b.AppendLine(string.Join(sep, new string[] { "Layer", "Scope", "User SID", "Area", "Name", "Friendly name", "Value", "Meaning", "Type", "Source", "Source detail", "Findings", "Registry path", "CSP URI", "Group Policy counterpart" }));
             foreach (PolicySetting p in s.Settings)
             {
                 List<string> f = new List<string>();
                 foreach (Finding x in p.Findings) f.Add(x.Kind + ": " + x.Message);
-                b.AppendLine(string.Join(",", new string[]
+                b.AppendLine(string.Join(sep, new string[]
                 {
-                    C(p.Layer), C(p.Scope), C(p.UserSid), C(p.Area), C(p.Name), C(p.FriendlyName), C(p.Value), C(p.ValueMeaning), C(p.ValueKind),
-                    C(p.Source), C(p.SourceDetail), C(string.Join(" | ", f.ToArray())), C(p.RegistryPath), C(p.CspUri), C(p.GroupPolicyName)
+                    C(p.Layer, sep), C(p.Scope, sep), C(p.UserSid, sep), C(p.Area, sep), C(p.Name, sep), C(p.FriendlyName, sep), C(p.Value, sep), C(p.ValueMeaning, sep), C(p.ValueKind, sep),
+                    C(p.Source, sep), C(p.SourceDetail, sep), C(string.Join(" | ", f.ToArray()), sep), C(p.RegistryPath, sep), C(p.CspUri, sep), C(p.GroupPolicyName, sep)
                 }));
             }
             File.WriteAllText(path, b.ToString(), new UTF8Encoding(true));
         }
 
-        static string C(string v)
+        static string C(string v, string sep)
         {
             if (v == null) return "";
-            if (v.Length > 0 && "=+-@".IndexOf(v[0]) >= 0) v = "'" + v;
-            if (v.IndexOfAny(new char[] { ',', '"', '\n', '\r' }) < 0) return v;
+            if (v.Length > 0 && "=+-@\t\r".IndexOf(v[0]) >= 0) v = "'" + v;
+            if (v.IndexOfAny(new char[] { ',', ';', '"', '\n', '\r' }) < 0) return v;
             return "\"" + v.Replace("\"", "\"\"") + "\"";
         }
 
@@ -121,7 +138,7 @@ namespace PolicyVice
                     if (i.Failed) b.Append("<span class=\"f Error\">").Append(H(string.IsNullOrEmpty(i.Status) ? "Failed" : i.Status)).Append("</span>");
                     else b.Append(H(i.Status));
                     b.Append("</td><td class=\"v\">").Append(H(i.ErrorCode)).Append("</td><td>")
-                     .Append(i.Time.HasValue ? H(i.Time.Value.ToString("yyyy-MM-dd HH:mm:ss", Inv)) : "").Append("</td><td>").Append(H(i.User)).Append("</td></tr>");
+                     .Append(i.Time.HasValue ? H(i.Time.Value.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss", Inv)) : "").Append("</td><td>").Append(H(i.User)).Append("</td></tr>");
                 }
                 b.Append("</table></div>");
             }
@@ -168,7 +185,7 @@ namespace PolicyVice
                 foreach (Change c in changes)
                 {
                     string src = c.OldSource == c.NewSource || c.OldSource == null ? c.NewSource : c.NewSource == null ? c.OldSource : c.OldSource + " → " + c.NewSource;
-                    b.Append("<tr><td><span class=\"f ").Append(c.Kind == Differ.Removed ? "Error" : c.Kind == Differ.Changed ? "Orphan" : "Added").Append("\">").Append(c.Kind).Append("</span></td><td>")
+                    b.Append("<tr><td><span class=\"f ").Append(c.Kind == Differ.Removed ? "Error" : c.Kind == Differ.Added ? "Added" : "Orphan").Append("\">").Append(c.Kind).Append("</span></td><td>")
                      .Append(H(c.Layer)).Append("</td><td>").Append(H(c.Scope)).Append("</td><td>").Append(H(c.Area)).Append("</td><td>").Append(H(c.Setting))
                      .Append("</td><td class=\"v\">").Append(H(c.OldValue)).Append("</td><td class=\"v\">").Append(H(c.NewValue)).Append("</td><td>").Append(H(src)).Append("</td></tr>");
                 }

@@ -34,7 +34,16 @@ namespace PolicyVice
         public const string Removed = "Removed";
         public const string Changed = "Changed";
 
+        public const string SourceChanged = "Source changed";
+
         public static List<Change> Compare(Snapshot before, Snapshot after)
+        {
+            return Compare(before, after, true);
+        }
+
+        // sources: also list settings whose value stayed the same but whose source changed. The watch log leaves them
+        // out, because a Group Policy refresh can briefly make Resultant Set of Policy unavailable.
+        public static List<Change> Compare(Snapshot before, Snapshot after, bool sources)
         {
             List<Change> list = new List<Change>();
             Dictionary<string, PolicySetting> a = Index(before);
@@ -49,8 +58,8 @@ namespace PolicyVice
                     continue;
                 }
                 PolicySetting o = kv.Value;
-                if (o.Value != n.Value || o.Source != n.Source)
-                    list.Add(Make(Changed, when, n, o.Value, n.Value, o.Source, n.Source));
+                if (o.Value != n.Value) list.Add(Make(Changed, when, n, o.Value, n.Value, o.Source, n.Source));
+                else if (sources && o.Source != n.Source) list.Add(Make(SourceChanged, when, n, o.Value, n.Value, o.Source, n.Source));
             }
             foreach (KeyValuePair<string, PolicySetting> kv in b)
                 if (!a.ContainsKey(kv.Key))
@@ -112,7 +121,9 @@ namespace PolicyVice
         {
             @"HKLM\SOFTWARE\Microsoft\PolicyManager\current",
             @"HKLM\SOFTWARE\Policies",
-            @"HKCU\SOFTWARE\Policies"
+            @"HKCU\SOFTWARE\Policies",
+            @"HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies",
+            @"HKCU\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies"
         };
 
         public event EventHandler Changed;

@@ -69,11 +69,13 @@ namespace PolicyVice
             psi.RedirectStandardError = true;
             using (Process p = Process.Start(psi))
             {
-                string err = "";
+                string err = "", o = "";
                 Thread t = new Thread(delegate () { try { err = p.StandardError.ReadToEnd(); } catch (Exception) { } });
                 t.IsBackground = true;
                 t.Start();
-                string o = p.StandardOutput.ReadToEnd();
+                Thread t2 = new Thread(delegate () { try { o = p.StandardOutput.ReadToEnd(); } catch (Exception) { } });
+                t2.IsBackground = true;
+                t2.Start();
                 if (!p.WaitForExit(30000))
                 {
                     try { p.Kill(); } catch (Exception) { }
@@ -81,6 +83,7 @@ namespace PolicyVice
                     return -1;
                 }
                 t.Join(2000);
+                t2.Join(2000);
                 output = (err.Trim().Length > 0 ? err : o).Trim().Replace("\r", " ").Replace("\n", " ");
                 return p.ExitCode;
             }

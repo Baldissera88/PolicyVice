@@ -459,6 +459,11 @@ namespace PolicyVice
             string ms = Math.Max(0, (long)(DateTime.UtcNow - since.ToUniversalTime()).TotalMilliseconds).ToString(CultureInfo.InvariantCulture);
             string level = errorsOnly ? " and (Level=1 or Level=2 or Level=3)" : "";
             string xpath = "*[System[TimeCreated[timediff(@SystemTime) <= " + ms + "]" + level + "]]";
+            // FormatDescription looks up message texts in the language of the regional format, not of Windows.
+            // With a Danish format on English Windows the texts are empty, so read them in the display language.
+            System.Globalization.CultureInfo keep = System.Threading.Thread.CurrentThread.CurrentCulture;
+            try { System.Threading.Thread.CurrentThread.CurrentCulture = CultureInfo.CreateSpecificCulture(CultureInfo.CurrentUICulture.Name); }
+            catch (Exception) { }
             try
             {
                 System.Diagnostics.Eventing.Reader.EventLogQuery q = new System.Diagnostics.Eventing.Reader.EventLogQuery(channel, System.Diagnostics.Eventing.Reader.PathType.LogName, xpath);
@@ -491,6 +496,7 @@ namespace PolicyVice
             catch (System.Diagnostics.Eventing.Reader.EventLogNotFoundException) { note = "The event log " + channel + " does not exist on this device."; }
             catch (UnauthorizedAccessException) { note = "The event log " + channel + " could not be opened: access denied."; }
             catch (Exception ex) { note = "The event log " + channel + " could not be read: " + ex.Message.Trim(); }
+            finally { System.Threading.Thread.CurrentThread.CurrentCulture = keep; }
             return list;
         }
 

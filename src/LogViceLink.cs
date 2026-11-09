@@ -42,8 +42,10 @@ namespace PolicyVice
         public static string Find()
         {
             List<string> candidates = new List<string>();
+            // The chosen path is stored per user. When PolicyVice runs as administrator it would start that program
+            // as administrator, so only trust it then when it is in a folder that only administrators can change.
             string custom = Prefs.Get("LogVicePath", null);
-            if (!string.IsNullOrEmpty(custom)) candidates.Add(custom);
+            if (!string.IsNullOrEmpty(custom) && (!Program.IsAdmin || UnderProgramFiles(custom))) candidates.Add(custom);
             try
             {
                 using (RegistryKey hklm = RegistryKey.OpenBaseKey(RegistryHive.LocalMachine, RegistryView.Registry64))
@@ -68,6 +70,21 @@ namespace PolicyVice
                 try { if (!string.IsNullOrEmpty(c) && File.Exists(c)) return c; } catch (Exception) { }
             }
             return null;
+        }
+
+        static bool UnderProgramFiles(string path)
+        {
+            try
+            {
+                string full = Path.GetFullPath(path);
+                foreach (Environment.SpecialFolder f in new Environment.SpecialFolder[] { Environment.SpecialFolder.ProgramFiles, Environment.SpecialFolder.ProgramFilesX86 })
+                {
+                    string root = Environment.GetFolderPath(f);
+                    if (!string.IsNullOrEmpty(root) && full.StartsWith(root.TrimEnd('\\') + "\\", StringComparison.OrdinalIgnoreCase)) return true;
+                }
+            }
+            catch (Exception) { }
+            return false;
         }
 
         public static bool Open(string exe, params string[] targets)

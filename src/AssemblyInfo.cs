@@ -10,4 +10,6 @@ using System.Runtime.InteropServices;
 [assembly: AssemblyFileVersion("0.2.0.0")]
 [assembly: AssemblyInformationalVersion("0.2.0")]
 [assembly: ComVisible(false)]
+// Load Windows DLLs from System32 only, never from the folder PolicyVice runs from.
+[assembly: DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
 [assembly: System.Runtime.Versioning.TargetFramework(".NETFramework,Version=v4.5", FrameworkDisplayName = ".NET Framework 4.5")]

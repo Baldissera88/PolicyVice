@@ -1312,12 +1312,32 @@ namespace PolicyVice
                 {
                     long take = Math.Min(DefaultMaxBytes, budget);
                     budget -= Math.Min(take, files[i].Length);
-                    foreach (KeyValuePair<string, string> kv in ReadNames(files[i].FullName, take))
+                    foreach (KeyValuePair<string, string> kv in CachedNames(files[i], take))
                         if (!merged.ContainsKey(kv.Key)) merged[kv.Key] = kv.Value;
                 }
                 return FillNames(items, merged);
             }
             catch (Exception) { return 0; }
+        }
+
+        // Rolled-over logs do not change, so their names are read once. Watch reads the device often.
+        static readonly Dictionary<string, KeyValuePair<string, Dictionary<string, string>>> cache = new Dictionary<string, KeyValuePair<string, Dictionary<string, string>>>(StringComparer.OrdinalIgnoreCase);
+
+        static Dictionary<string, string> CachedNames(FileInfo f, long take)
+        {
+            string stamp = f.Length.ToString(CultureInfo.InvariantCulture) + "|" + f.LastWriteTimeUtc.Ticks.ToString(CultureInfo.InvariantCulture) + "|" + take.ToString(CultureInfo.InvariantCulture);
+            lock (cache)
+            {
+                KeyValuePair<string, Dictionary<string, string>> hit;
+                if (cache.TryGetValue(f.FullName, out hit) && hit.Key == stamp) return hit.Value;
+            }
+            Dictionary<string, string> names = ReadNames(f.FullName, take);
+            lock (cache)
+            {
+                if (cache.Count > 200) cache.Clear();
+                cache[f.FullName] = new KeyValuePair<string, Dictionary<string, string>>(stamp, names);
+            }
+            return names;
         }
 
         public static Dictionary<string, string> ReadNames(string path)

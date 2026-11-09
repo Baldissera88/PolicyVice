@@ -637,7 +637,8 @@ namespace PolicyVice
                     Snapshot before = snap != null && snapFile == null ? snap : null;
                     snapFile = null;
                     Bind(s);
-                    if (fromWatch && before != null) RecordWatch(before, s);
+                    // While Watch is on, every read is compared, so a manual refresh does not hide changes.
+                    if (before != null && (fromWatch || watcher != null)) RecordWatch(before, s);
                 }
             }
             catch (Exception ex) { Safe.Report(ex); }
@@ -1070,7 +1071,7 @@ namespace PolicyVice
 
         void RecordWatch(Snapshot before, Snapshot after)
         {
-            List<Change> found = Differ.Compare(before, after);
+            List<Change> found = Differ.Compare(before, after, false);
             DateTime now = DateTime.Now;
             foreach (Change c in found) c.Time = now;
             List<MdmError> recent = new List<MdmError>(after.Errors);
@@ -1437,9 +1438,15 @@ namespace PolicyVice
             }
         }
 
+        // Opens a saved file through the signed-in user's shell, so the browser or Excel does not run as administrator.
         static void OpenFile(string path)
         {
-            try { System.Diagnostics.Process.Start(path); } catch (Exception) { }
+            try
+            {
+                if (Program.IsAdmin) System.Diagnostics.Process.Start(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Windows), "explorer.exe"), "\"" + path + "\"");
+                else System.Diagnostics.Process.Start(path);
+            }
+            catch (Exception) { }
         }
 
         void Fail(Exception ex)

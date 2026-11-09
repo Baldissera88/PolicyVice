@@ -114,20 +114,52 @@ namespace PolicyVice
         }
 
         static AdmxCatalog catalog;
+        static string ingestionStamp;
 
+        // The ADMX files are read once. The ingested ADMX folder is read again when a sync added or changed files.
         public static AdmxCatalog Catalog()
         {
-            if (catalog != null) return catalog;
+            string stamp = FolderStamp(AdmxCatalog.IngestionFolder);
+            if (catalog != null && stamp == ingestionStamp) return catalog;
             AdmxCatalog c = new AdmxCatalog();
             c.LoadFolder(AdmxCatalog.DefaultFolder);
             c.LoadIngested(AdmxCatalog.IngestionFolder);
             catalog = c;
+            ingestionStamp = stamp;
             return c;
+        }
+
+        static string FolderStamp(string dir)
+        {
+            try
+            {
+                if (!Directory.Exists(dir)) return "";
+                long n = 0, last = 0;
+                foreach (FileInfo f in new DirectoryInfo(dir).GetFiles("*", SearchOption.AllDirectories))
+                {
+                    n++;
+                    last = Math.Max(last, f.LastWriteTimeUtc.Ticks);
+                }
+                return n.ToString(System.Globalization.CultureInfo.InvariantCulture) + "|" + last.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            }
+            catch (UnauthorizedAccessException) { return "denied"; }
+            catch (Exception) { return ""; }
         }
 
         public static Snapshot CollectLive(int days)
         {
-            Snapshot s = Collector.Collect(new LiveRegistry(), new LiveRsop(), new LiveEvents(), Catalog(), Options(days));
+            Snapshot s;
+            AdmxCatalog c = Catalog();
+            using (LiveRegistry reg = new LiveRegistry())
+            {
+                s = Collector.Collect(reg, new LiveRsop(), new LiveEvents(), c, Options(days));
+            }
+            if (ingestionStamp == "denied")
+            {
+                string n = "The ingested ADMX folder " + AdmxCatalog.IngestionFolder + " could not be read, so values from ingested ADMX may show as Unmanaged. Run PolicyVice as administrator.";
+                s.Notes.Add(n);
+                s.Device.Add("Collection", "Note", n);
+            }
             // The registry has only app IDs. The Intune Management Extension logs name them.
             try { ImeLog.FillNamesFromFolder(s.Intune, ImeLog.DefaultFolder); }
             catch (Exception) { }

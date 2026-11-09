@@ -6,8 +6,8 @@ Everything PolicyVice does is read-only, except **Sync**, which starts Windows' 
 
 ## Before you start
 
-1. Copy `PolicyVice.exe` to the PC, for example to `C:\Temp\PolicyVice`.
-2. Open an elevated PowerShell in that folder and collect the reference data:
+1. Install `PolicyVice.msi`, or copy `PolicyVice.exe` to a folder that only administrators can change, such as `C:\Program Files\PolicyVice`. A folder like `C:\Temp` can be changed by every user, which is not a good place for a program you run as administrator.
+2. Open an elevated PowerShell in a working folder, for example your Documents folder, and collect the reference data:
 
 ```powershell
 dsregcmd /status > dsregcmd.txt
@@ -60,7 +60,10 @@ Compare with `gpresult.html`.
 ## 5. Findings
 
 - [ ] **Conflicts**: each one is a setting that really is set by both Intune and a GPO. Check one or two in `gpresult` and the Intune portal.
-- [ ] **Settings with errors**: each one matches an error in Event Viewer under *Applications and Services Logs > Microsoft > Windows > DeviceManagement-Enterprise-Diagnostics-Provider > Admin*.
+- [ ] **Overlap** in the Findings column is only a hint: a GPO sets something in an area that Intune also configures, such as Windows Update, but not the same setting. It is not counted as a conflict.
+- [ ] Values written by Intune ADMX-backed settings, such as a security baseline, device control or OneDrive, show source **MDM (ADMX)**, not Unmanaged.
+- [ ] **Settings with errors**: each one matches an error in Event Viewer under *Applications and Services Logs > Microsoft > Windows > DeviceManagement-Enterprise-Diagnostics-Provider > Admin*. A setting that Windows never applied is listed too, with an empty value.
+- [ ] The **MDM events** tab shows readable messages, also with Danish regional settings.
 - [ ] **Orphans** and **Unmanaged values**: check one of each. Do they make sense, or is PolicyVice wrong about the owner?
 
 ## 6. Intune apps and scripts
@@ -80,7 +83,7 @@ Compare with the app and script status in the Intune portal, or Company Portal o
 ```powershell
 New-Item -Path 'HKLM:\SOFTWARE\Policies\PolicyViceTest' -Force | Out-Null
 Set-ItemProperty -Path 'HKLM:\SOFTWARE\Policies\PolicyViceTest' -Name 'Test' -Value 1 -Type DWord
-Start-Sleep -Seconds 5
+Start-Sleep -Seconds 60
 Remove-Item -Path 'HKLM:\SOFTWARE\Policies\PolicyViceTest' -Recurse
 ```
 
@@ -96,7 +99,7 @@ Remove-Item -Path 'HKLM:\SOFTWARE\Policies\PolicyViceTest' -Recurse
 ## 9. Exports and the command line
 
 - [ ] **Export > HTML report** opens a readable report with the findings first.
-- [ ] **Export > CSV** opens in Excel with one row per setting.
+- [ ] **Export > CSV** opens in Excel in columns, with one row per setting. It uses the list separator of your regional format, so `;` with Danish settings.
 - [ ] From the command line:
 
 ```powershell
