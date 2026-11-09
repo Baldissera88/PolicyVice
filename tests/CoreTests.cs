@@ -8,10 +8,25 @@ namespace PolicyVice.Tests
     {
         readonly Dictionary<string, Dictionary<string, RegValue>> keys = new Dictionary<string, Dictionary<string, RegValue>>(StringComparer.OrdinalIgnoreCase);
         readonly List<string> denied = new List<string>();
+        readonly Dictionary<string, bool> blocked = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
 
         public List<string> Denied
         {
             get { return denied; }
+        }
+
+        // The key exists but cannot be opened, like a key without read access.
+        public void Block(string path)
+        {
+            Ensure(path);
+            blocked[path] = true;
+        }
+
+        bool IsBlocked(string path)
+        {
+            if (!blocked.ContainsKey(path)) return false;
+            if (!denied.Contains(path)) denied.Add(path);
+            return true;
         }
 
         public void Set(string path, string name, string kind, string data)
@@ -34,6 +49,7 @@ namespace PolicyVice.Tests
 
         public string[] SubKeys(string path)
         {
+            if (IsBlocked(path)) return new string[0];
             List<string> l = new List<string>();
             string prefix = path + "\\";
             foreach (string k in keys.Keys)
@@ -49,6 +65,7 @@ namespace PolicyVice.Tests
         public string[] ValueNames(string path)
         {
             Dictionary<string, RegValue> v;
+            if (IsBlocked(path)) return new string[0];
             if (!keys.TryGetValue(path, out v)) return new string[0];
             return new List<string>(v.Keys).ToArray();
         }
@@ -57,19 +74,53 @@ namespace PolicyVice.Tests
         {
             Dictionary<string, RegValue> v;
             RegValue r;
+            if (IsBlocked(path)) return null;
             return keys.TryGetValue(path, out v) && v.TryGetValue(name, out r) ? r : null;
         }
     }
 
-    public sealed class FakeRsop : IRsopSource
+    public sealed class FakeRsop : IRsopSource, IUserRsopSource
     {
         public List<RsopValue> Values = new List<RsopValue>();
         public string Note;
+        public Dictionary<string, List<RsopValue>> Users = new Dictionary<string, List<RsopValue>>(StringComparer.OrdinalIgnoreCase);
+        public bool Throw;
+        public List<string> UserCalls = new List<string>();
 
         public List<RsopValue> ComputerValues(out string note)
         {
+            if (Throw) throw new InvalidOperationException("WMI is broken");
             note = Note;
             return Values;
+        }
+
+        public List<RsopValue> UserValues(string sid, out string note)
+        {
+            UserCalls.Add(sid);
+            if (Throw) throw new InvalidOperationException("WMI is broken");
+            List<RsopValue> l;
+            if (sid != null && Users.TryGetValue(sid, out l))
+            {
+                note = null;
+                return l;
+            }
+            note = "There is no user Resultant Set of Policy for this user.";
+            return new List<RsopValue>();
+        }
+
+        public void AddUser(string sid, string key, string name, string data, string gpo, int prec)
+        {
+            List<RsopValue> l;
+            if (!Users.TryGetValue(sid, out l)) { l = new List<RsopValue>(); Users[sid] = l; }
+            RsopValue r = new RsopValue();
+            r.Key = key;
+            r.ValueName = name;
+            r.Data = data;
+            r.Kind = "REG_SZ";
+            r.GpoName = gpo;
+            r.GpoId = "CN={" + gpo + "},CN=Policies,CN=System,DC=contoso,DC=com";
+            r.Precedence = prec;
+            l.Add(r);
         }
 
         public void Add(string key, string name, string data, string gpo, int prec)
@@ -86,13 +137,33 @@ namespace PolicyVice.Tests
         }
     }
 
-    public sealed class FakeEvents : IEventSource
+    public sealed class FakeEvents : IEventSource, ISourceNote
     {
         public List<EventItem> Items = new List<EventItem>();
+        public bool Throw;
+        public string ReadNote;
+
+        public string Note
+        {
+            get { return ReadNote; }
+        }
 
         public List<EventItem> Read(string channel, DateTime since, bool errorsOnly)
         {
+            if (Throw) throw new UnauthorizedAccessException("Access is denied.");
             return Items;
+        }
+
+        public EventItem Add(int id, string level, string message, params string[] props)
+        {
+            EventItem i = new EventItem();
+            i.Time = new DateTime(2026, 11, 8, 9, 0, 0);
+            i.Id = id;
+            i.Level = level;
+            i.Message = message;
+            i.Properties = props;
+            Items.Add(i);
+            return i;
         }
     }
 
@@ -319,7 +390,176 @@ namespace PolicyVice.Tests
             Collector.ParseUri(ue);
             Check(ue.Scope == "User" && ue.Area == "Start" && ue.Name == "HideRecentlyAddedApps", "user URI parsed");
 
+            Hardening();
+            Events();
+
             if (args.Length > 0) File.WriteAllText(args[0], html);
+        }
+
+        static CollectOptions Opt()
+        {
+            CollectOptions o = new CollectOptions();
+            o.CurrentUserSid = UserSid;
+            o.NowUtc = new DateTime(2026, 11, 8, 9, 30, 0, DateTimeKind.Utc);
+            return o;
+        }
+
+        static bool HasNote(Snapshot s, string part)
+        {
+            foreach (string n in s.Notes) if (n.Contains(part)) return true;
+            return false;
+        }
+
+        static void Hardening()
+        {
+            // A provider GUID that is not an enrollment is not called MDM.
+            const string Other = "77777777-0000-4000-8000-000000000007";
+            FakeRegistry r = SampleRegistry();
+            string priv = Pm + @"\current\device\Privacy";
+            r.Set(priv, "LetAppsAccessCamera", "REG_DWORD", "2");
+            r.Set(priv, "LetAppsAccessCamera_ProviderSet", "REG_DWORD", "1");
+            r.Set(priv, "LetAppsAccessCamera_WinningProvider", "REG_SZ", Other);
+            r.Set(priv, "LetAppsAccessCamera_LastWrite", "REG_DWORD", "1");
+            r.Set(priv, "LetAppsAccessCamera_ADMXInstanceData", "REG_SZ", "x");
+            r.Set(Pm + @"\providers\" + Other + @"\default\Device\Privacy", "LetAppsAccessCamera", "REG_DWORD", "2");
+            r.Set(Pm + @"\providers\" + Other + @"\default\Device\Privacy", "LetAppsAccessCamera_LastWrite", "REG_DWORD", "1");
+            // Not enrollments: no ProviderID.
+            r.Set(@"HKLM\SOFTWARE\Microsoft\Enrollments\Status", "x", "REG_DWORD", "0");
+            r.Set(@"HKLM\SOFTWARE\Microsoft\Enrollments\ValidNodePaths", "x", "REG_DWORD", "0");
+            Snapshot s = Collector.Collect(r, SampleRsop(), null, SampleCatalog(), Opt());
+            PolicySetting cam = Find(s, Layers.Mdm, "Privacy", "LetAppsAccessCamera");
+            Check(cam != null && cam.Source == Sources.Unknown && cam.SourceDetail.Contains("not an MDM enrollment") && !cam.Has(FindingKinds.Orphan), "unknown provider is Unknown, not Other MDM");
+            Check(cam != null && cam.Contributions.Count == 1 && cam.Contributions[0].Source == Sources.Unknown && cam.Contributions[0].Wins, "unknown provider contribution");
+            int camCount = 0;
+            foreach (PolicySetting p in s.Settings) if (p.Area == "Privacy") camCount++;
+            Check(camCount == 1, "every companion suffix skipped");
+            Check(s.Enrollments.Count == 1, "Status and ValidNodePaths are not enrollments");
+
+            // Other MDM: an enrollment with another ProviderID, and a winner written with braces.
+            FakeRegistry ro = SampleRegistry();
+            ro.Set(@"HKLM\SOFTWARE\Microsoft\Enrollments\" + Other, "ProviderID", "REG_SZ", "AirWatchMDM");
+            ro.Set(Pm + @"\current\device\Camera", "AllowCamera", "REG_DWORD", "0");
+            ro.Set(Pm + @"\current\device\Camera", "AllowCamera_WinningProvider", "REG_SZ", "{" + Other + "}");
+            ro.Set(Pm + @"\providers\" + Other + @"\default\Device\Camera", "AllowCamera", "REG_DWORD", "0");
+            Snapshot so = Collector.Collect(ro, SampleRsop(), null, SampleCatalog(), Opt());
+            PolicySetting camo = Find(so, Layers.Mdm, "Camera", "AllowCamera");
+            Check(camo != null && camo.Source == Sources.OtherMdm && camo.SourceDetail == "AirWatchMDM", "other MDM enrollment");
+
+            // A provider key that cannot be read: no orphan claims, a note and an access denied entry.
+            FakeRegistry rd = SampleRegistry();
+            string blocked = Pm + @"\providers\" + IntuneId + @"\default";
+            rd.Block(blocked);
+            Snapshot sd = Collector.Collect(rd, SampleRsop(), null, SampleCatalog(), Opt());
+            Check(sd.Count(FindingKinds.Orphan) == 0, "no orphans when providers are unreadable");
+            Check(sd.AccessDenied.Contains(blocked), "denied key recorded");
+            Check(HasNote(sd, "orphaned MDM values are not reported"), "note for unreadable providers");
+            Check(sd.Device.Items.Exists(delegate (InfoItem i) { return i.Group == "Collection"; }), "notes shown with device information");
+
+            // User Group Policy from RSoP for HKCU and for another user in HKU.
+            const string Sid2 = "S-1-5-21-1000-2000-3000-1104";
+            FakeRegistry ru = SampleRegistry();
+            ru.Set(@"HKCU\SOFTWARE\Policies\Microsoft\Office\16.0\Common", "QMEnable", "REG_DWORD", "0");
+            ru.Set(Pm + @"\current\" + Sid2 + @"\Start", "HideRecentlyAddedApps", "REG_DWORD", "1");
+            ru.Set(Pm + @"\providers\" + IntuneId + @"\default\" + Sid2 + @"\Start", "HideRecentlyAddedApps", "REG_DWORD", "1");
+            ru.Set(@"HKU\" + Sid2 + @"\SOFTWARE\Policies\Microsoft\Edge", "HomepageLocation", "REG_SZ", "https://contoso.com");
+            FakeRsop gu = SampleRsop();
+            gu.AddUser(UserSid, @"Software\Policies\Microsoft\Office", "Bar", "baz", "User - Office", 1);
+            gu.AddUser(UserSid, @"Software\Policies\Microsoft\Office", "Bar", "old", "User - Legacy", 2);
+            Snapshot su = Collector.Collect(ru, gu, null, SampleCatalog(), Opt());
+            PolicySetting bar = Find(su, Layers.Registry, @"Microsoft\Office", "Bar");
+            Check(bar != null && bar.Source == Sources.GroupPolicy && bar.SourceDetail == "User - Office" && bar.UserSid == UserSid, "user GPO from user RSoP");
+            Check(bar != null && bar.Contributions.Count == 2 && bar.Contributions[0].Wins && bar.Contributions[0].RegistryPath == @"HKCU\Software\Policies\Microsoft\Office", "user GPO precedence and path");
+            PolicySetting qm = Find(su, Layers.Registry, @"Microsoft\Office\16.0\Common", "QMEnable");
+            Check(qm != null && qm.Source == Sources.Unmanaged && qm.Has(FindingKinds.Unmanaged), "unclaimed user value with user RSoP");
+            PolicySetting home = Find(su, Layers.Registry, @"Microsoft\Edge", "HomepageLocation");
+            Check(home != null && home.Scope == "User" && home.UserSid == Sid2 && home.Source == Sources.Unknown && home.SourceDetail.StartsWith("User Group Policy not available"), "user without RSoP stays Unknown");
+            Check(HasNote(su, Sid2), "note for user without RSoP");
+            Check(gu.UserCalls.Count == 2 && gu.UserCalls.Contains(UserSid) && gu.UserCalls.Contains(Sid2), "user RSoP read once per user");
+
+            // RSoP and events that throw do not stop the collection.
+            FakeRsop bad = SampleRsop();
+            bad.Throw = true;
+            FakeEvents badEv = new FakeEvents();
+            badEv.Throw = true;
+            Snapshot sb = null;
+            try { sb = Collector.Collect(SampleRegistry(), bad, badEv, SampleCatalog(), Opt()); } catch (Exception) { }
+            Check(sb != null && !sb.RsopAvailable && sb.RsopNote.Contains("WMI is broken"), "RSoP exception becomes a note");
+            Check(sb != null && HasNote(sb, "MDM events could not be read"), "event exception becomes a note");
+            Check(sb != null && Find(sb, Layers.Mdm, "Update", "AllowAutoUpdate") != null && sb.Count(FindingKinds.Unmanaged) == 0, "other sources still read");
+            PolicySetting bar2 = sb == null ? null : Find(sb, Layers.Registry, @"Microsoft\Office", "Bar");
+            Check(bar2 != null && bar2.Source == Sources.Unknown, "user value Unknown when user RSoP throws");
+
+            // A timed-out RSoP.
+            FakeRsop slow = new FakeRsop();
+            slow.Note = "Resultant Set of Policy did not answer within 45 seconds.";
+            Snapshot st = Collector.Collect(SampleRegistry(), slow, null, SampleCatalog(), Opt());
+            PolicySetting left = Find(st, Layers.Registry, @"Microsoft\Leftover", "Foo");
+            Check(!st.RsopAvailable && st.RsopNote == slow.Note && left != null && left.Source == Sources.Unknown && !left.Has(FindingKinds.Unmanaged), "RSoP timeout note");
+
+            // A large policy registry is capped with a note.
+            FakeRegistry big = new FakeRegistry();
+            for (int k = 0; k < 250; k++)
+                for (int v = 0; v < 100; v++)
+                    big.Set(@"HKLM\SOFTWARE\Policies\Vendor\App" + k, "V" + v, "REG_DWORD", "1");
+            DateTime t0 = DateTime.UtcNow;
+            Snapshot sbig = Collector.Collect(big, new FakeRsop(), null, null, Opt());
+            Check(sbig.PolicyRegistry.Count == Collector.MaxRegistryValues && HasNote(sbig, @"values under SOFTWARE\Policies were read"), "registry budget " + sbig.PolicyRegistry.Count);
+            Check((DateTime.UtcNow - t0).TotalSeconds < 30, "large registry in reasonable time");
+
+            // What decides a conflict is stated without overclaiming.
+            Snapshot sw = Sample();
+            PolicySetting ts = Find(sw, Layers.Mdm, "ADMX_TerminalServer", "TS_DISABLE_CONNECTIONS");
+            Check(ts != null && ts.Findings[0].Message.Contains("only for Policy CSP settings that have an equivalent Group Policy"), "MDMWinsOverGP scope stated");
+            PolicySetting au = Find(sw, Layers.Registry, @"Microsoft\Windows\WindowsUpdate\AU", "NoAutoUpdate");
+            Check(au != null && au.Findings[0].Message.Contains("IgnoreWindowsUpdateGroupPolicies") && au.Findings[0].Message.Contains("not on"), "Update conflict names IgnoreWindowsUpdateGroupPolicies");
+            FakeRegistry ri = SampleRegistry();
+            ri.Set(Pm + @"\current\device\Update", "IgnoreWindowsUpdateGroupPolicies", "REG_DWORD", "1");
+            Snapshot si = Collector.Collect(ri, SampleRsop(), null, SampleCatalog(), Opt());
+            PolicySetting aui = Find(si, Layers.Registry, @"Microsoft\Windows\WindowsUpdate\AU", "NoAutoUpdate");
+            Check(aui != null && aui.Findings[0].Message.Contains("IgnoreWindowsUpdateGroupPolicies is on"), "IgnoreWindowsUpdateGroupPolicies read");
+            FakeRegistry rn = SampleRegistry();
+            rn.Set(Pm + @"\current\device\ControlPolicyConflict", "MDMWinsOverGP", "REG_DWORD", "0");
+            Snapshot sn = Collector.Collect(rn, SampleRsop(), null, SampleCatalog(), Opt());
+            PolicySetting tsn = Find(sn, Layers.Mdm, "ADMX_TerminalServer", "TS_DISABLE_CONNECTIONS");
+            Check(!sn.MdmWinsOverGp && tsn != null && tsn.Findings[0].Message.Contains("no guarantee"), "MDMWinsOverGP off");
+        }
+
+        static void Events()
+        {
+            FakeEvents ev = new FakeEvents();
+            // Message template missing: only the properties, in the order of the 404 template.
+            EventItem raw = ev.Add(404, "Error", null, IntuneId, "MDMDeviceWithAAD", "Policy", "0x00000002", "./Device/Vendor/MSFT/Policy/Config/Update/AllowAutoUpdate", "0x80070057");
+            raw.Message = string.Join(", ", raw.Properties);
+            ev.Add(809, "Error", "MDM PolicyManager: Set policy int, Policy: (AllowTelemetry), Area: (System), EnrollmentID requesting set: (" + IntuneId + "), Current User: (Device), Int: (0x2AFE388), Enrollment Type: (0x6), Scope: (0x0), Result:(0x86000011) Unknown Win32 Error code: 0x86000011.");
+            ev.Add(2545, "Error", "MDM Declared Configuration: Function (checkNewInstanceData) operation (Read isNewInstanceData) failed with (The parameter is incorrect.)", "checkNewInstanceData", "Read isNewInstanceData", "0x80070057");
+            ev.Add(454, "Error", "MDM ConfigurationManager: Command failure status. Configuraton Source ID: {D9E3514D-4668-424B-A6B9-9B16B1C935BE}, Enrollment Type: FamilySafety, CSP Name: AppLocker, Command Type: Add: from Replace or Add, Result: ./Vendor/MSFT/AppLocker/FamilySafety/FamilySafetyGroup/StoreApps.");
+            ev.Add(404, "Error", "MDM ConfigurationManager: Command failure status. Configuration Source ID: (" + IntuneId + "), Enrollment Name: (MDMDeviceWithAAD), Provider Name: (defender), Command Type: (Add: from Replace or Add), CSP URI: (./vendor/msft/defender/configuration/devicecontrol/policyrules/{b7db918d-3702-4daa-865b-e71b45047c9e}/ruledata), Result: (The parameter is incorrect.).",
+                IntuneId, "MDMDeviceWithAAD", "defender", "0x00000002", "./vendor/msft/defender/configuration/devicecontrol/policyrules/{b7db918d-3702-4daa-865b-e71b45047c9e}/ruledata", "0x80070057");
+            ev.Add(809, "Error", "MDM PolicyManager: Set policy int, Policy: (HideRecentlyAddedApps), Area: (Start), EnrollmentID requesting set: (" + IntuneId + "), Current User: (" + UserSid + "), Int: (0x1), Enrollment Type: (0x6), Scope: (0x1), Result:(0x86000011).");
+            ev.Add(404, "Error", null);
+            ev.Add(404, "Error", "CSP URI: (), Result: ()");
+            ev.Items.Add(null);
+            ev.ReadNote = "Only the newest 5000 events were read.";
+            Snapshot s = Collector.Collect(SampleRegistry(), SampleRsop(), ev, SampleCatalog(), Opt());
+            Check(s.Errors.Count == 8, "all events kept " + s.Errors.Count);
+            MdmError a = s.Errors[0];
+            Check(a.CspUri == "./Device/Vendor/MSFT/Policy/Config/Update/AllowAutoUpdate" && a.Area == "Update" && a.Result == "0x80070057", "event without template parsed from properties");
+            PolicySetting upd = Find(s, Layers.Mdm, "Update", "AllowAutoUpdate");
+            Check(upd != null && upd.Has(FindingKinds.Error), "property event linked to setting");
+            MdmError b = s.Errors[1];
+            Check(b.Area == "System" && b.Name == "AllowTelemetry" && b.Scope == "Device" && b.Result == "0x86000011" && b.CspUri == "./Device/Vendor/MSFT/Policy/Config/System/AllowTelemetry", "PolicyManager event parsed");
+            MdmError c = s.Errors[2];
+            Check(c.CspUri == null && c.Area == null && c.Result == "0x80070057", "event 2545 result from properties");
+            MdmError d = s.Errors[3];
+            Check(d.CspUri == "./Vendor/MSFT/AppLocker/FamilySafety/FamilySafetyGroup/StoreApps" && d.Area == null, "old 454 format");
+            MdmError e = s.Errors[4];
+            Check(e.CspUri != null && e.CspUri.StartsWith("./vendor/msft/defender/") && e.Result == "The parameter is incorrect. (0x80070057)" && e.Area == null, "text result with HRESULT");
+            MdmError f = s.Errors[5];
+            Check(f.Scope == "User" && f.Area == "Start" && f.CspUri != null && f.CspUri.StartsWith("./User/"), "user PolicyManager event");
+            PolicySetting usr = Find(s, Layers.Mdm, "Start", "HideRecentlyAddedApps");
+            Check(usr != null && usr.Has(FindingKinds.Error), "user event linked");
+            Check(s.Errors[6].CspUri == null && s.Errors[6].Result == null && s.Errors[7].CspUri == null && s.Errors[7].Result == null, "empty and malformed events");
+            Check(HasNote(s, "newest 5000"), "event source note");
         }
     }
 }

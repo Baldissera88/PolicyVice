@@ -183,6 +183,7 @@ namespace PolicyVice
         [DataMember] public List<string> AccessDenied = new List<string>();
         [DataMember] public DeviceInfo Device = new DeviceInfo();
         [DataMember] public List<ImeItem> Intune = new List<ImeItem>();
+        [DataMember] public List<string> Notes = new List<string>();
 
         public int Count(string kind)
         {
@@ -239,6 +240,7 @@ namespace PolicyVice
                 if (s.Device == null) s.Device = new DeviceInfo();
                 if (s.Device.Items == null) s.Device.Items = new List<InfoItem>();
                 if (s.Intune == null) s.Intune = new List<ImeItem>();
+                if (s.Notes == null) s.Notes = new List<string>();
                 foreach (PolicySetting p in s.Settings)
                 {
                     if (p.Findings == null) p.Findings = new List<Finding>();

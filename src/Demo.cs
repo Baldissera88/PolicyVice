@@ -71,14 +71,27 @@ namespace PolicyVice
         }
     }
 
-    public sealed class MemoryRsop : IRsopSource
+    public sealed class MemoryRsop : IRsopSource, IUserRsopSource
     {
         public readonly List<RsopValue> Values = new List<RsopValue>();
+        public readonly Dictionary<string, List<RsopValue>> Users = new Dictionary<string, List<RsopValue>>(StringComparer.OrdinalIgnoreCase);
 
         public List<RsopValue> ComputerValues(out string note)
         {
             note = null;
             return Values;
+        }
+
+        public List<RsopValue> UserValues(string sid, out string note)
+        {
+            List<RsopValue> l;
+            if (sid != null && Users.TryGetValue(sid, out l))
+            {
+                note = null;
+                return l;
+            }
+            note = "Group Policy has not run for this user on this device.";
+            return new List<RsopValue>();
         }
 
         public void Add(string key, string name, string data, string gpo, int prec)
