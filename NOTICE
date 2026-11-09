@@ -1,0 +1,37 @@
+PolicyVice
+Copyright (c) 2026 Daniel L. Baldissera
+PolicyVice is released under the MIT license, see LICENSE.
+
+This product includes data derived from third-party documentation:
+
+Policy CSP reference (Microsoft Learn, "Policy CSP" pages)
+-----------------------------------------------------------
+
+res/PolicyCsp.tsv.gz, which is embedded in PolicyVice.exe, contains setting names,
+descriptions, allowed values and Group Policy mappings extracted from Microsoft's
+Policy CSP reference documentation: the windows/client-management/mdm/policy-csp-*.md
+files of the Windows client IT pro documentation.
+
+  Work:       Policy CSP reference, Windows client documentation for IT pros
+  Authors:    Microsoft Corporation and contributors
+  Published:  https://learn.microsoft.com/windows/client-management/mdm/policy-configuration-service-provider
+  Repository: https://github.com/MicrosoftDocs/windows-itpro-docs (branch public)
+  Copy used:  https://github.com/dodexahedron/windows-itpro-docs, an unmodified fork,
+              branch public, commit 30fa38219c454ecdcd34bae7aa84a93783132286 (2025-07-09)
+  License:    Creative Commons Attribution 4.0 International (CC BY 4.0)
+              https://creativecommons.org/licenses/by/4.0/legalcode
+
+Changes: the documentation was converted to a table with tools/build_csp_catalog.py.
+Markdown was converted to plain text. Descriptions were shortened to their first one
+or two sentences, and long value descriptions to their first sentence. Only selected
+fields were kept. The documentation is provided as is, and Microsoft does not endorse
+PolicyVice.
+
+The documentation repository states: "Microsoft and any contributors grant you a
+license to the Microsoft documentation and other content in this repository under the
+Creative Commons Attribution 4.0 International Public License."
+
+Microsoft, Windows, Intune and other Microsoft products and services named in the
+documentation may be trademarks or registered trademarks of Microsoft in the United
+States and/or other countries. The license does not grant rights to use any Microsoft
+names, logos or trademarks.
