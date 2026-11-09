@@ -10,7 +10,7 @@ namespace PolicyVice
     public static class Program
     {
         public const string Developer = "Daniel L. Baldissera";
-        public const string BuildDate = "8 November 2026";
+        public const string BuildDate = "9 November 2026";
 
         [DllImport("kernel32.dll")]
         static extern bool AttachConsole(int pid);

@@ -242,8 +242,9 @@ namespace PolicyVice
             o.EventDays = 7;
             o.NowUtc = now.AddMinutes(variant).ToUniversalTime();
             Snapshot s = Collector.Collect(r, gp, ev, c, o);
-            if (s.Device == null) s.Device = new DeviceInfo();
-            if (s.Device.Items == null || s.Device.Items.Count == 0) s.Device = SampleDevice();
+            // The demo registry has no join or ConfigMgr keys, so show a complete sample device instead.
+            s.Device = SampleDevice();
+            if (s.Notes != null) s.Notes.Clear();
             if (s.Intune == null || s.Intune.Count == 0) s.Intune = SampleIntune(now);
             return s;
         }
