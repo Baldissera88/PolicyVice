@@ -73,6 +73,11 @@ namespace PolicyVice
             Card(b, s.Count(FindingKinds.Error), "Settings with errors", "bad");
             Card(b, s.Count(FindingKinds.Orphan), "Orphans", "warn");
             Card(b, s.Count(FindingKinds.Unmanaged), "Unmanaged values", "warn");
+            List<ImeItem> ime = new List<ImeItem>();
+            if (s.Intune != null) foreach (ImeItem i in s.Intune) if (i != null) ime.Add(i);
+            int failed = 0;
+            foreach (ImeItem i in ime) if (i.Failed) failed++;
+            if (ime.Count > 0) Card(b, failed, "Failed apps and scripts", "bad");
             b.Append("</div><p class=\"note\">MDMWinsOverGP is ").Append(s.MdmWinsOverGp ? "on" : "off").Append(".");
             if (!string.IsNullOrEmpty(s.RsopNote)) b.Append(" ").Append(H(s.RsopNote));
             b.Append("</p>");
@@ -91,6 +96,48 @@ namespace PolicyVice
                 foreach (Enrollment e in s.Enrollments)
                     b.Append("<tr><td>").Append(H(e.ProviderName)).Append("</td><td>").Append(H(e.Upn)).Append("</td><td>").Append(e.EnrollmentType)
                      .Append("</td><td>").Append(e.EnrollmentState).Append("</td><td class=\"v\">").Append(H(e.Id)).Append("</td></tr>");
+                b.Append("</table></div>");
+            }
+
+            if (ime.Count > 0)
+            {
+                // Failed first, then by kind and name. A stable sort keeps the collector's order within each group.
+                List<KeyValuePair<int, ImeItem>> order = new List<KeyValuePair<int, ImeItem>>();
+                for (int i = 0; i < ime.Count; i++) order.Add(new KeyValuePair<int, ImeItem>(i, ime[i]));
+                order.Sort(delegate (KeyValuePair<int, ImeItem> x, KeyValuePair<int, ImeItem> y)
+                {
+                    if (x.Value.Failed != y.Value.Failed) return x.Value.Failed ? -1 : 1;
+                    int c = string.Compare(x.Value.Kind, y.Value.Kind, StringComparison.OrdinalIgnoreCase);
+                    if (c == 0) c = string.Compare(ImeName(x.Value), ImeName(y.Value), StringComparison.OrdinalIgnoreCase);
+                    return c != 0 ? c : x.Key.CompareTo(y.Key);
+                });
+                b.Append("<h2>Intune apps and scripts</h2><div class=\"wrap\"><table><tr><th>Kind</th><th>Name</th><th>Status</th><th>Error</th><th>Time</th><th>User</th></tr>");
+                foreach (KeyValuePair<int, ImeItem> kv in order)
+                {
+                    ImeItem i = kv.Value;
+                    b.Append("<tr><td>").Append(H(i.Kind)).Append("</td><td title=\"").Append(H(i.Id)).Append("\">").Append(H(ImeName(i)));
+                    if (!string.IsNullOrEmpty(i.Detail)) b.Append("<br><span class=\"note\">").Append(H(Txt.Short(i.Detail, 400))).Append("</span>");
+                    b.Append("</td><td>");
+                    if (i.Failed) b.Append("<span class=\"f Error\">").Append(H(string.IsNullOrEmpty(i.Status) ? "Failed" : i.Status)).Append("</span>");
+                    else b.Append(H(i.Status));
+                    b.Append("</td><td class=\"v\">").Append(H(i.ErrorCode)).Append("</td><td>")
+                     .Append(i.Time.HasValue ? H(i.Time.Value.ToString("yyyy-MM-dd HH:mm:ss", Inv)) : "").Append("</td><td>").Append(H(i.User)).Append("</td></tr>");
+                }
+                b.Append("</table></div>");
+            }
+
+            if (s.Device != null && s.Device.Items != null && s.Device.Items.Count > 0)
+            {
+                List<string> groups = new List<string>();
+                foreach (InfoItem i in s.Device.Items) if (i != null && !groups.Contains(i.Group ?? "")) groups.Add(i.Group ?? "");
+                b.Append("<h2>Device</h2><div class=\"wrap\"><table>");
+                foreach (string g in groups)
+                {
+                    b.Append("<tr><th colspan=\"2\">").Append(H(g.Length == 0 ? "Other" : g)).Append("</th></tr>");
+                    foreach (InfoItem i in s.Device.Items)
+                        if (i != null && (i.Group ?? "") == g)
+                            b.Append("<tr><td style=\"width:240px\">").Append(H(i.Label)).Append("</td><td>").Append(H(i.Value)).Append("</td></tr>");
+                }
                 b.Append("</table></div>");
             }
 
@@ -151,6 +198,11 @@ namespace PolicyVice
                 b.Append("</tr>");
             }
             b.Append("</table></div>");
+        }
+
+        static string ImeName(ImeItem i)
+        {
+            return string.IsNullOrEmpty(i.Name) ? i.Id : i.Name;
         }
 
         static void Card(StringBuilder b, int n, string label, string cls)
