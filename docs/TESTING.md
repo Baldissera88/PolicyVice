@@ -114,7 +114,11 @@ $p.ExitCode
 
   The exit code is 0 when there are no findings and 2 when there are.
 
-## 10. Look and feel
+## 10. Upgrade
+
+- [ ] With PolicyVice open (also as administrator), install the new `PolicyVice.msi` by double-clicking and with `msiexec /i PolicyVice.msi /qn`. PolicyVice closes, the upgrade finishes without a restart, and **Apps** in Settings lists only the new version.
+
+## 11. Look and feel
 
 - [ ] **Theme** cycles through System, Light, Dark and Vice, and every tab is readable in each.
 - [ ] Nothing is cut off at your display scaling, for example 125% or 150%.

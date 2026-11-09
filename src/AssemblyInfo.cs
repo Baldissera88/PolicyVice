@@ -6,9 +6,9 @@ using System.Runtime.InteropServices;
 [assembly: AssemblyProduct("PolicyVice")]
 [assembly: AssemblyCompany("Daniel L. Baldissera")]
 [assembly: AssemblyCopyright("Copyright © 2026 Daniel L. Baldissera")]
-[assembly: AssemblyVersion("0.3.0.0")]
-[assembly: AssemblyFileVersion("0.3.0.0")]
-[assembly: AssemblyInformationalVersion("0.3.0")]
+[assembly: AssemblyVersion("0.3.1.0")]
+[assembly: AssemblyFileVersion("0.3.1.0")]
+[assembly: AssemblyInformationalVersion("0.3.1")]
 [assembly: ComVisible(false)]
 // Load Windows DLLs from System32 only, never from the folder PolicyVice runs from.
 [assembly: DefaultDllImportSearchPaths(DllImportSearchPath.System32)]

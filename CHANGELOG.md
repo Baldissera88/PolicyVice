@@ -1,5 +1,12 @@
 # Changelog
 
+## PolicyVice 0.3.1
+
+9 November 2026.
+
+- The MSI closes a running PolicyVice before it upgrades or uninstalls, also a copy running as administrator, so the upgrade no longer stalls on files in use and needs no restart
+
+
 ## PolicyVice 0.3.0
 
 9 November 2026. Friendly names instead of IDs and codes.
