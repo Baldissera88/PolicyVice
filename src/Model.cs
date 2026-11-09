@@ -101,6 +101,15 @@ namespace PolicyVice
         [DataMember] public string WinningProvider;
         [DataMember] public List<Contribution> Contributions = new List<Contribution>();
         [DataMember] public List<Finding> Findings = new List<Finding>();
+        [DataMember] public string ValueMeaning;
+        [DataMember] public string GroupPolicyName;
+        [DataMember] public string GroupPolicyPath;
+
+        // The value with its documented meaning, such as "1 (Allowed)".
+        public string DisplayValue
+        {
+            get { return string.IsNullOrEmpty(ValueMeaning) ? Value : Value + " (" + ValueMeaning + ")"; }
+        }
 
         public string Key
         {

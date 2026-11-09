@@ -25,6 +25,7 @@ namespace PolicyVice.Tests
             DeviceTests.Run();
             CatalogTests.Run();
             ImeTests.Run();
+            EnrichTests.Run();
             Console.WriteLine(T.Passed + " passed, " + T.Failed + " failed");
             return T.Failed == 0 ? 0 : 1;
         }
