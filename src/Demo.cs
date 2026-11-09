@@ -241,7 +241,87 @@ namespace PolicyVice
             o.CurrentUserSid = Sid;
             o.EventDays = 7;
             o.NowUtc = now.AddMinutes(variant).ToUniversalTime();
-            return Collector.Collect(r, gp, ev, c, o);
+            Snapshot s = Collector.Collect(r, gp, ev, c, o);
+            if (s.Device == null) s.Device = new DeviceInfo();
+            if (s.Device.Items == null || s.Device.Items.Count == 0) s.Device = SampleDevice();
+            if (s.Intune == null || s.Intune.Count == 0) s.Intune = SampleIntune(now);
+            return s;
+        }
+
+        static DeviceInfo SampleDevice()
+        {
+            DeviceInfo d = new DeviceInfo();
+            d.Add("Device", "Computer name", "CONTOSO-PC042");
+            d.Add("Device", "Manufacturer", "LENOVO");
+            d.Add("Device", "Model", "ThinkPad T14s Gen 4 (21F8)");
+            d.Add("Device", "Serial number", "PF4X2K9Q");
+            d.Add("Device", "Windows", "Windows 11 Enterprise 25H2 (26200.7171)");
+            d.Add("Device", "Last boot", "2026-11-08 07:52:13");
+            d.Add("Join", "Join type", "Microsoft Entra hybrid joined");
+            d.Add("Join", "Domain", "contoso.local");
+            d.Add("Join", "Tenant", "Contoso Ltd (contoso.onmicrosoft.com)");
+            d.Add("Join", "Tenant ID", "8a1b3c2d-4e5f-4a6b-9c8d-7e6f5a4b3c2d");
+            d.Add("Join", "Entra device ID", "3f9e2c41-7b6a-4d58-a1e3-52c7d9f0b8a6");
+            d.Add("Join", "Primary refresh token", "Yes, issued 2026-11-08 07:53");
+            d.Add("MDM", "MDM authority", "Intune");
+            d.Add("MDM", "Enrolled user", "anna.hansen@contoso.com");
+            d.Add("MDM", "Enrollment ID", Intune);
+            d.Add("MDM", "Enrollment type", "Automatic enrollment with Entra ID (device credential)");
+            d.Add("MDM", "MDM device ID", "b7c4e1a2-9d3f-4e6b-8a5c-1f2e3d4c5b6a");
+            d.Add("MDM", "Last successful sync", "2026-11-08 21:12:40");
+            d.Add("MDM", "Co-management", "Enabled. Workloads: compliance policies, Windows Update policies, device configuration");
+            d.Add("Intune Management Extension", "Version", "1.93.105.0");
+            d.Add("Intune Management Extension", "Service", "Running");
+            d.Add("Intune Management Extension", "Logs", @"C:\ProgramData\Microsoft\IntuneManagementExtension\Logs");
+            return d;
+        }
+
+        static List<ImeItem> SampleIntune(DateTime now)
+        {
+            const string sys = "System";
+            const string user = "anna.hansen@contoso.com";
+            string userId = "a2f4c6e8-1b3d-4f5a-8c7e-9d0b2a4c6e81";
+            List<ImeItem> l = new List<ImeItem>();
+            l.Add(Ime("Win32 app", "4f1e7c2a-6b3d-4a8e-9f05-1c2d3e4f5a6b", "Google Chrome Enterprise", sys, "Installed", null, now.AddHours(-3), false,
+                "Intent: required. Detected by MSI product code {6D1B4AB9-3B83-3F5C-9C2B-B1A6E3D5F7C9}, version 131.0.6778.86.", userId));
+            l.Add(Ime("Win32 app", "9b8a7c6d-5e4f-4a3b-8c2d-1e0f9a8b7c6d", "Adobe Acrobat Reader (64-bit)", user, "Install failed", "0x87D1041C", now.AddMinutes(-47), true,
+                "Intent: required.\nThe installer exited with code 0, but the app was not detected afterwards (0x87D1041C). Check the detection rule: it looks for HKLM\\SOFTWARE\\Adobe\\Acrobat Reader\\DC\\Installer, which the 64-bit installer does not write.\nNext attempt after the retry interval of 5 minutes, 3 retries left.", userId));
+            l.Add(Ime("Win32 app", "2c3d4e5f-6a7b-4c8d-9e0f-a1b2c3d4e5f6", "Cisco Secure Client 5.1", sys, "Waiting for retry", "0x80070652", now.AddMinutes(-12), true,
+                "Intent: required.\nAnother installation was in progress (0x80070652, ERROR_INSTALL_ALREADY_RUNNING). The extension tries again at the next check-in.", userId));
+            l.Add(Ime("Win32 app", "7e6d5c4b-3a29-4180-9f7e-6d5c4b3a2918", "7-Zip 24.08 (x64)", sys, "Installed", null, now.AddDays(-2).AddHours(-4), false,
+                "Intent: available, installed from Company Portal by anna.hansen@contoso.com.", userId));
+            l.Add(Ime("Win32 app", "5a6b7c8d-9e0f-4a1b-8c2d-3e4f5a6b7c8d", "Notepad++ 8.7.1", sys, "Detection failed", "0x87D1041C", now.AddHours(-26), true,
+                "Intent: required.\nThe detection script returned no output, so the app counts as not installed.", userId));
+            l.Add(Ime("Platform script", "0d1e2f3a-4b5c-4d6e-8f7a-9b0c1d2e3f4a", "Set regional settings (da-DK)", sys, "Succeeded", null, now.AddDays(-6), false,
+                "Runs as: system, 64-bit PowerShell. Exit code 0.", null));
+            l.Add(Ime("Platform script", "1e2f3a4b-5c6d-4e7f-8a9b-0c1d2e3f4a5b", "Map department drives", user, "Failed", "1", now.AddHours(-5), true,
+                "Runs as: signed-in user, 64-bit PowerShell. Exit code 1.\nError: New-PSDrive : The network path was not found (\\\\fs01.contoso.local\\finance).", null));
+            l.Add(Ime("Remediation", "3a4b5c6d-7e8f-4a9b-8c0d-1e2f3a4b5c6d", "Restore OneDrive policy keys", sys, "Issue fixed", null, now.AddMinutes(-95), false,
+                "Detection found 2 missing values under HKLM\\SOFTWARE\\Policies\\Microsoft\\OneDrive. Remediation wrote them back, and detection after remediation passed.", null));
+            l.Add(Ime("Remediation", "4b5c6d7e-8f9a-4b0c-9d1e-2f3a4b5c6d7e", "Clear Teams cache when larger than 1 GB", user, "Issue recurred", "1", now.AddHours(-8), true,
+                "Detection exit code 1 after remediation: the cache is still 1.4 GB. Teams was probably running while the remediation tried to delete it.", null));
+            l.Add(Ime("Remediation", "6d7e8f9a-0b1c-4d2e-8f3a-4b5c6d7e8f9a", "Check BitLocker recovery key backup", sys, "Succeeded", null, now.AddHours(-20), false,
+                "Detection exit code 0: the recovery key is backed up to Entra ID.", null));
+            return l;
+        }
+
+        static ImeItem Ime(string kind, string id, string name, string user, string status, string error, DateTime time, bool failed, string detail, string userId)
+        {
+            ImeItem i = new ImeItem();
+            i.Kind = kind;
+            i.Id = id;
+            i.Name = name;
+            i.User = user;
+            i.Status = status;
+            i.ErrorCode = error;
+            i.Time = time;
+            i.Failed = failed;
+            i.Detail = detail;
+            const string root = @"HKLM\SOFTWARE\Microsoft\IntuneManagementExtension";
+            if (kind == "Win32 app") i.RegistryPath = root + @"\Win32Apps\" + (userId ?? "00000000-0000-0000-0000-000000000000") + "\\" + id + "_1";
+            else if (kind == "Platform script") i.RegistryPath = root + @"\Policies\" + "00000000-0000-0000-0000-000000000000\\" + id;
+            else i.RegistryPath = root + @"\SideCarPolicies\Scripts\Reports\" + "00000000-0000-0000-0000-000000000000\\" + id + "_1";
+            return i;
         }
 
         static void Mdm(MemoryRegistry r, string dev, string prov, string area, string name, int value)

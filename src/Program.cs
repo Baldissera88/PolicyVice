@@ -171,9 +171,11 @@ namespace PolicyVice
             }
             catch (Exception) { }
             Fonts.Init();
+            try { Application.SetUnhandledExceptionMode(UnhandledExceptionMode.CatchException); } catch (Exception) { }
             Application.ThreadException += delegate (object sender, System.Threading.ThreadExceptionEventArgs e)
             {
-                MessageBox.Show(e.Exception.Message, "PolicyVice", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                if (Safe.Reporter != null) Safe.Report(e.Exception);
+                else MessageBox.Show(e.Exception.Message, "PolicyVice", MessageBoxButtons.OK, MessageBoxIcon.Error);
             };
             string open = null;
             bool demo = false;

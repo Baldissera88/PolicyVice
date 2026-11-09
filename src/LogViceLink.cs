@@ -15,9 +15,28 @@ namespace PolicyVice
         public const string GroupPolicy = "evt:Microsoft-Windows-GroupPolicy/Operational";
         public const string Aad = "evt:Microsoft-Windows-AAD/Operational";
 
+        public static string ImeFolder
+        {
+            get { return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), @"Microsoft\IntuneManagementExtension\Logs"); }
+        }
+
         public static string ImeLog
         {
-            get { return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), @"Microsoft\IntuneManagementExtension\Logs\IntuneManagementExtension.log"); }
+            get { return Path.Combine(ImeFolder, "IntuneManagementExtension.log"); }
+        }
+
+        // IntuneManagementExtension.log, and AppWorkload.log when it exists (Win32 app installs on newer IME versions).
+        public static string[] ImeLogs()
+        {
+            List<string> list = new List<string>();
+            list.Add(ImeLog);
+            try
+            {
+                string work = Path.Combine(ImeFolder, "AppWorkload.log");
+                if (File.Exists(work)) list.Add(work);
+            }
+            catch (Exception) { }
+            return list.ToArray();
         }
 
         public static string Find()

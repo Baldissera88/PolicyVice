@@ -2,13 +2,149 @@ namespace PolicyVice
 {
     using System;
     using System.Collections.Generic;
+    using System.ComponentModel;
     using System.Drawing;
     using System.Drawing.Drawing2D;
+    using System.Reflection;
+    using System.Text;
     using System.Windows.Forms;
 
     public interface IThemed
     {
         void ApplyTheme(Theme t);
+    }
+
+    // Catches exceptions from event handlers and reports them in the window instead of failing.
+    public static class Safe
+    {
+        public static Action<Exception> Reporter;
+        public static Action<string> Status;
+
+        public static void Report(Exception ex)
+        {
+            try { if (Reporter != null && ex != null) Reporter(ex); } catch (Exception) { }
+        }
+
+        public static void Say(string text)
+        {
+            try { if (Status != null) Status(text); } catch (Exception) { }
+        }
+
+        public static EventHandler Wrap(EventHandler h)
+        {
+            return delegate (object s, EventArgs e)
+            {
+                try { h(s, e); }
+                catch (Exception ex) { Report(ex); }
+            };
+        }
+
+        public static void Run(Action a)
+        {
+            try { a(); }
+            catch (Exception ex) { Report(ex); }
+        }
+    }
+
+    public static class Menus
+    {
+        public static ContextMenuStrip New(Theme t)
+        {
+            ContextMenuStrip m = new ContextMenuStrip();
+            Prepare(m, t);
+            return m;
+        }
+
+        public static void Prepare(ContextMenuStrip m, Theme t)
+        {
+            m.Items.Clear();
+            m.Renderer = new ToolStripProfessionalRenderer(new MenuColors(t));
+            m.BackColor = t.Card;
+            m.ForeColor = t.Text;
+            m.Font = Fonts.Ui;
+            m.ShowImageMargin = false;
+        }
+
+        public static ToolStripMenuItem Add(ContextMenuStrip m, string text, EventHandler click)
+        {
+            ToolStripMenuItem i = new ToolStripMenuItem(text, null, Safe.Wrap(click));
+            i.ForeColor = m.ForeColor;
+            i.Padding = new Padding(Dpi.S(4), Dpi.S(3), Dpi.S(4), Dpi.S(3));
+            m.Items.Add(i);
+            return i;
+        }
+
+        public static void Separator(ContextMenuStrip m)
+        {
+            if (m.Items.Count > 0 && !(m.Items[m.Items.Count - 1] is ToolStripSeparator)) m.Items.Add(new ToolStripSeparator());
+        }
+
+        public static bool Copy(string text)
+        {
+            if (string.IsNullOrEmpty(text)) return false;
+            try
+            {
+                Clipboard.SetText(text);
+                Safe.Say("Copied to the clipboard.");
+                return true;
+            }
+            catch (Exception)
+            {
+                Safe.Say("The clipboard is busy. Try again.");
+                return false;
+            }
+        }
+    }
+
+    // A slim bar that slides while PolicyVice reads the device.
+    public sealed class BusyBar : FlatControl
+    {
+        readonly Timer timer = new Timer();
+        float pos;
+        bool running;
+
+        public BusyBar()
+        {
+            Height = Dpi.S(3);
+            TabStop = false;
+            SetStyle(ControlStyles.Selectable, false);
+            timer.Interval = 30;
+            timer.Tick += delegate
+            {
+                pos += 0.012f;
+                if (pos > 1.2f) pos = -0.3f;
+                Invalidate();
+            };
+        }
+
+        public bool Running
+        {
+            get { return running; }
+            set
+            {
+                if (running == value) return;
+                running = value;
+                pos = -0.3f;
+                if (value) timer.Start(); else timer.Stop();
+                Invalidate();
+            }
+        }
+
+        protected override void OnPaint(PaintEventArgs e)
+        {
+            Graphics g = e.Graphics;
+            g.Clear(T.Bg);
+            if (!running) return;
+            int w = Math.Max(Dpi.S(60), Width / 4);
+            int x = (int)(pos * Width);
+            using (SolidBrush b = new SolidBrush(T.Accent)) g.FillRectangle(b, x, 0, w, Height);
+        }
+
+        protected override void Dispose(bool disposing)
+        {
+            if (disposing) timer.Dispose();
+            base.Dispose(disposing);
+        }
     }
 
     static class Shapes
@@ -162,7 +298,7 @@ namespace PolicyVice
             Label = label;
             Tone = tone;
             Cursor = Cursors.Hand;
-            Size = new Size(Dpi.S(124), Dpi.S(58));
+            Size = new Size(Math.Max(Dpi.S(124), TextRenderer.MeasureText(label, Fonts.Small).Width + Dpi.S(30)), Dpi.S(58));
         }
 
         protected override void OnPaint(PaintEventArgs e)
@@ -228,10 +364,13 @@ namespace PolicyVice
             g.Clear(T.Bg);
             hits.Clear();
             int x = Dpi.S(16);
+            int total = x, pad = Dpi.S(20);
+            for (int i = 0; i < tabs.Count; i++) total += TextRenderer.MeasureText(tabs[i], i == selected ? Fonts.UiSemibold : Fonts.Ui).Width + pad + Dpi.S(4);
+            if (total > Width) pad = Dpi.S(8);
             for (int i = 0; i < tabs.Count; i++)
             {
                 Font f = i == selected ? Fonts.UiSemibold : Fonts.Ui;
-                int w = TextRenderer.MeasureText(tabs[i], f).Width + Dpi.S(20);
+                int w = TextRenderer.MeasureText(tabs[i], f).Width + pad;
                 Rectangle r = new Rectangle(x, 0, w, Height);
                 hits.Add(r);
                 if (i == hot && i != selected) Shapes.Fill(g, new RectangleF(r.X, Dpi.S(4), r.Width, Height - Dpi.S(10)), Dpi.S(5), T.Hover);
@@ -290,9 +429,58 @@ namespace PolicyVice
         Theme theme = Theme.Light();
         public Func<T, Color> ForeColor;
         public event EventHandler SelectionChanged;
+        // Adds the items for the selected row after Copy cell and Copy row.
+        public Action<ContextMenuStrip, T> MenuExtras;
+        // Shown in the grid when it has no rows.
+        public string EmptyText;
+        int menuCol = -1;
 
         public Table()
         {
+            try
+            {
+                PropertyInfo db = typeof(DataGridView).GetProperty("DoubleBuffered", BindingFlags.Instance | BindingFlags.NonPublic);
+                if (db != null) db.SetValue(Grid, true, null);
+            }
+            catch (Exception) { }
+            Grid.ClipboardCopyMode = DataGridViewClipboardCopyMode.Disable;
+            Grid.KeyDown += delegate (object s, KeyEventArgs e)
+            {
+                if (e.Control && e.KeyCode == Keys.C)
+                {
+                    e.Handled = true;
+                    e.SuppressKeyPress = true;
+                    T r = Current;
+                    if (r != null) Menus.Copy(RowText(r));
+                }
+            };
+            Grid.CellMouseDown += delegate (object s, DataGridViewCellMouseEventArgs e)
+            {
+                if (e.Button != MouseButtons.Right || e.RowIndex < 0 || e.RowIndex >= rows.Count || e.ColumnIndex < 0) return;
+                menuCol = e.ColumnIndex;
+                try { Grid.CurrentCell = Grid.Rows[e.RowIndex].Cells[e.ColumnIndex]; } catch (Exception) { }
+            };
+            ContextMenuStrip menu = new ContextMenuStrip();
+            menu.Opening += delegate (object s, CancelEventArgs e)
+            {
+                try
+                {
+                    BuildMenu(menu);
+                    if (menu.Items.Count == 0) e.Cancel = true;
+                }
+                catch (Exception ex)
+                {
+                    e.Cancel = true;
+                    Safe.Report(ex);
+                }
+            };
+            Grid.ContextMenuStrip = menu;
+            Grid.Paint += delegate (object s, PaintEventArgs e)
+            {
+                if (rows.Count > 0 || string.IsNullOrEmpty(EmptyText)) return;
+                Rectangle r = new Rectangle(Dpi.S(24), Grid.ColumnHeadersHeight + Dpi.S(28), Math.Max(0, Grid.ClientSize.Width - Dpi.S(48)), Dpi.S(90));
+                TextRenderer.DrawText(e.Graphics, EmptyText, Fonts.Ui, r, theme.Text3, TextFormatFlags.HorizontalCenter | TextFormatFlags.Top | TextFormatFlags.WordBreak | TextFormatFlags.NoPrefix);
+            };
             Grid.VirtualMode = true;
             Grid.ReadOnly = true;
             Grid.AllowUserToAddRows = false;
@@ -314,40 +502,111 @@ namespace PolicyVice
             Grid.ShowCellToolTips = true;
             Grid.CellValueNeeded += delegate (object s, DataGridViewCellValueEventArgs e)
             {
-                if (e.RowIndex < 0 || e.RowIndex >= rows.Count || e.ColumnIndex >= columns.Count) return;
-                string v = columns[e.ColumnIndex].Text(rows[e.RowIndex]);
-                e.Value = v == null ? "" : Txt.Short(v, 300);
+                e.Value = Short(Cell(e.RowIndex, e.ColumnIndex), 300);
             };
             Grid.CellToolTipTextNeeded += delegate (object s, DataGridViewCellToolTipTextNeededEventArgs e)
             {
-                if (e.RowIndex < 0 || e.RowIndex >= rows.Count || e.ColumnIndex >= columns.Count) return;
-                string v = columns[e.ColumnIndex].Text(rows[e.RowIndex]);
+                string v = Cell(e.RowIndex, e.ColumnIndex);
                 if (v != null && v.Length > 40) e.ToolTipText = Txt.Short(v, 1000);
             };
             Grid.CellFormatting += delegate (object s, DataGridViewCellFormattingEventArgs e)
             {
                 if (ForeColor == null || e.RowIndex < 0 || e.RowIndex >= rows.Count) return;
-                Color c = ForeColor(rows[e.RowIndex]);
-                if (!c.IsEmpty)
+                try
                 {
-                    e.CellStyle.ForeColor = c;
-                    e.CellStyle.SelectionForeColor = c;
+                    Color c = ForeColor(rows[e.RowIndex]);
+                    if (!c.IsEmpty)
+                    {
+                        e.CellStyle.ForeColor = c;
+                        e.CellStyle.SelectionForeColor = c;
+                    }
                 }
+                catch (Exception) { }
             };
             Grid.ColumnHeaderMouseClick += delegate (object s, DataGridViewCellMouseEventArgs e)
             {
                 if (e.Button != MouseButtons.Left) return;
-                T keep = Current;
-                if (sortCol == e.ColumnIndex) sortDesc = !sortDesc;
-                else { sortCol = e.ColumnIndex; sortDesc = false; }
-                Sort();
-                for (int i = 0; i < Grid.Columns.Count; i++)
-                    Grid.Columns[i].HeaderCell.SortGlyphDirection = i == sortCol ? (sortDesc ? SortOrder.Descending : SortOrder.Ascending) : SortOrder.None;
-                Grid.Invalidate();
-                Select(keep);
+                try
+                {
+                    T keep = Current;
+                    if (sortCol == e.ColumnIndex) sortDesc = !sortDesc;
+                    else { sortCol = e.ColumnIndex; sortDesc = false; }
+                    Sort();
+                    for (int i = 0; i < Grid.Columns.Count; i++)
+                        Grid.Columns[i].HeaderCell.SortGlyphDirection = i == sortCol ? (sortDesc ? SortOrder.Descending : SortOrder.Ascending) : SortOrder.None;
+                    Grid.Invalidate();
+                    Select(keep);
+                }
+                catch (Exception ex) { Safe.Report(ex); }
             };
-            Grid.SelectionChanged += delegate { if (SelectionChanged != null) SelectionChanged(this, EventArgs.Empty); };
+            Grid.SelectionChanged += delegate { RaiseSelection(); };
             Grid.DataError += delegate (object s, DataGridViewDataErrorEventArgs e) { e.ThrowException = false; };
+        }
+
+        void RaiseSelection()
+        {
+            try { if (SelectionChanged != null) SelectionChanged(this, EventArgs.Empty); }
+            catch (Exception ex) { Safe.Report(ex); }
+        }
+
+        string Cell(int row, int col)
+        {
+            if (row < 0 || row >= rows.Count || col < 0 || col >= columns.Count) return "";
+            try { return columns[col].Text(rows[row]) ?? ""; }
+            catch (Exception) { return ""; }
+        }
+
+        static string Short(string v, int max)
+        {
+            return string.IsNullOrEmpty(v) ? "" : Txt.Short(v, max);
+        }
+
+        // The row as tab-separated text, in the column order on screen.
+        public string RowText(T r)
+        {
+            int i = rows.IndexOf(r);
+            List<string> parts = new List<string>();
+            foreach (DataGridViewColumn c in Ordered()) parts.Add(Cell(i, c.Index).Replace("\t", " ").Replace("\r", " ").Replace("\n", " "));
+            return string.Join("\t", parts.ToArray());
+        }
+
+        List<DataGridViewColumn> Ordered()
+        {
+            List<DataGridViewColumn> list = new List<DataGridViewColumn>();
+            foreach (DataGridViewColumn c in Grid.Columns) if (c.Visible) list.Add(c);
+            list.Sort(delegate (DataGridViewColumn a, DataGridViewColumn b) { return a.DisplayIndex.CompareTo(b.DisplayIndex); });
+            return list;
+        }
+
+        public string AllText()
+        {
+            StringBuilder b = new StringBuilder();
+            List<string> head = new List<string>();
+            foreach (DataGridViewColumn c in Ordered()) head.Add(c.HeaderText);
+            b.Append(string.Join("\t", head.ToArray())).Append("\r\n");
+            foreach (T r in rows) b.Append(RowText(r)).Append("\r\n");
+            return b.ToString();
+        }
+
+        void BuildMenu(ContextMenuStrip m)
+        {
+            Menus.Prepare(m, theme);
+            T row = Current;
+            int col = menuCol >= 0 ? menuCol : Grid.CurrentCell != null ? Grid.CurrentCell.ColumnIndex : 0;
+            menuCol = -1;
+            if (row != null)
+            {
+                string cell = Cell(rows.IndexOf(row), col);
+                Menus.Add(m, "Copy cell", delegate { Menus.Copy(cell); }).Enabled = cell.Length > 0;
+                Menus.Add(m, "Copy row  (Ctrl+C)", delegate { Menus.Copy(RowText(row)); });
+            }
+            if (rows.Count > 0) Menus.Add(m, "Copy all rows", delegate { Menus.Copy(AllText()); });
+            if (row != null && MenuExtras != null)
+            {
+                Menus.Separator(m);
+                MenuExtras(m, row);
+            }
+            if (m.Items.Count > 0 && m.Items[m.Items.Count - 1] is ToolStripSeparator) m.Items.RemoveAt(m.Items.Count - 1);
         }
 
         public void Add(Column<T> c)
@@ -388,7 +647,7 @@ namespace PolicyVice
             Grid.RowCount = rows.Count;
             Grid.Invalidate();
             if (keep != null && rows.Contains(keep)) Select(keep);
-            else if (SelectionChanged != null) SelectionChanged(this, EventArgs.Empty);
+            else RaiseSelection();
         }
 
         void Sort()
@@ -397,7 +656,12 @@ namespace PolicyVice
             Func<T, string> f = columns[sortCol].Text;
             bool desc = sortDesc;
             List<KeyValuePair<string, T>> keyed = new List<KeyValuePair<string, T>>(rows.Count);
-            foreach (T r in rows) keyed.Add(new KeyValuePair<string, T>(f(r) ?? "", r));
+            foreach (T r in rows)
+            {
+                string k;
+                try { k = f(r) ?? ""; } catch (Exception) { k = ""; }
+                keyed.Add(new KeyValuePair<string, T>(k, r));
+            }
             keyed.Sort(delegate (KeyValuePair<string, T> a, KeyValuePair<string, T> b)
             {
                 int c = Natural(a.Key, b.Key);
