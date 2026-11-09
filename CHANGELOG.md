@@ -1,5 +1,12 @@
 # Changelog
 
+## PolicyVice 0.3.2
+
+9 November 2026.
+
+- The MSI installs again: 0.3.1 stopped with error 2613 because the step that closes PolicyVice ran in a place where Windows Installer does not allow it. A running PolicyVice is still closed first, and the old version is now removed after the new one is installed
+
+
 ## PolicyVice 0.3.1
 
 9 November 2026.

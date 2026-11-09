@@ -1,10 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
-  <Product Id="BCFA6776-2D1F-485A-99D9-F2E8B118514F"
+  <Product Id="0B4CE000-50E8-422D-A0F0-F41C3075B218"
            Name="PolicyVice"
            Language="1033"
            Codepage="1252"
-           Version="0.3.1"
+           Version="0.3.2"
            Manufacturer="Daniel L. Baldissera"
            UpgradeCode="3C84D289-D136-4103-B7CB-9E978F088172">
 
@@ -14,14 +14,16 @@
              Description="PolicyVice policy inspector"
              Comments="Policy inspector for Intune, MDM and Group Policy" />
 
-    <MajorUpgrade Schedule="afterInstallInitialize" DowngradeErrorMessage="A newer version of PolicyVice is already installed." />
+    <MajorUpgrade Schedule="afterInstallFinalize" DowngradeErrorMessage="A newer version of PolicyVice is already installed." />
 
     <!-- A running PolicyVice holds PolicyVice.exe open, so an upgrade or uninstall would stall on files in use.
-         Close it first, as SYSTEM, which also ends a copy running as administrator. Then remove the old version. -->
+         Close it first, as SYSTEM, which also ends a copy running as administrator, before the files are installed.
+         The old version is removed after the installation, because Windows Installer allows no action
+         between InstallInitialize and RemoveExistingProducts (error 2613). -->
     <Property Id="MSIRESTARTMANAGERCONTROL" Value="Disable" />
     <CustomAction Id="ClosePolicyVice" Directory="SystemFolder" ExeCommand="taskkill.exe /F /IM PolicyVice.exe" Execute="deferred" Impersonate="no" Return="ignore" />
     <InstallExecuteSequence>
-      <Custom Action="ClosePolicyVice" Before="RemoveExistingProducts" />
+      <Custom Action="ClosePolicyVice" After="InstallInitialize" />
     </InstallExecuteSequence>
 
     <Media Id="1" Cabinet="policyvice.cab" EmbedCab="yes" />
@@ -41,7 +43,7 @@
         <Directory Id="INSTALLDIR" Name="PolicyVice">
 
           <Component Id="PolicyViceExe" Guid="7E32574D-347F-41D9-A29E-453066F94B6E" Win64="yes">
-            <File Id="PolicyViceExe" Name="PolicyVice.exe" Source="PolicyVice.exe" KeyPath="yes" DefaultVersion="0.3.1.0">
+            <File Id="PolicyViceExe" Name="PolicyVice.exe" Source="PolicyVice.exe" KeyPath="yes" DefaultVersion="0.3.2.0">
               <Shortcut Id="StartMenuShortcut"
                         Directory="ProgramMenuFolder"
                         Name="PolicyVice"

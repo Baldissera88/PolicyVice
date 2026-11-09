@@ -26,12 +26,13 @@ patch('Directory', d); patch('File', f); patch('Shortcut', s)
 
 # wixl leaves out the ClosePolicyVice action from PolicyVice.wxs and ignores MajorUpgrade Schedule.
 # Add the action (34 exe in a directory + 64 ignore exit code + 1024 deferred + 2048 no impersonation),
-# and run it inside the installation, followed by the removal of the old version.
+# and run it right after InstallInitialize, before the files are installed. The old version is removed after
+# InstallFinalize: Windows Installer allows no action between InstallInitialize and RemoveExistingProducts (error 2613).
 ca = open('CustomAction.idt', newline='').read()
 if 'ClosePolicyVice' not in ca:
     with open('CustomAction.idt', 'a', newline='') as fh:
         fh.write('\t'.join(['ClosePolicyVice', '3170', 'SystemFolder', 'taskkill.exe /F /IM PolicyVice.exe', '']) + '\r\n')
-seq = {'ClosePolicyVice': '1501', 'RemoveExistingProducts': '1502'}
+seq = {'ClosePolicyVice': '1501', 'RemoveExistingProducts': '6700'}
 def q(c):
     if c[0] in seq: c[2] = seq[c[0]]
     return '\t'.join(c)
