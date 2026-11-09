@@ -29,6 +29,8 @@ namespace PolicyVice
         public const string Error = "Error";
         public const string Orphan = "Orphan";
         public const string Unmanaged = "Unmanaged";
+        // Group Policy in an area that MDM also configures, without an exact match. Shown, not counted.
+        public const string Overlap = "Overlap";
     }
 
     [DataContract]
@@ -104,6 +106,8 @@ namespace PolicyVice
         [DataMember] public string ValueMeaning;
         [DataMember] public string GroupPolicyName;
         [DataMember] public string GroupPolicyPath;
+        // The registry key of a policy value without its hive, such as Software\Policies\Microsoft\Windows\System.
+        [DataMember] public string PolicyKey;
 
         // The value with its documented meaning, such as "1 (Allowed)".
         public string DisplayValue

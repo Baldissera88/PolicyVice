@@ -68,7 +68,7 @@ namespace PolicyVice
             {
                 if (p.Layer != Layers.Mdm) continue;
                 mdm[p.Scope + "|" + (p.UserSid ?? "") + "|" + p.Area + "|" + p.Name] = p;
-                AdmxPolicy b = admx.ForMdm(p.Area, p.Name);
+                AdmxPolicy b = Collector.AdmxFor(p, admx, csp);
                 if (b == null) continue;
                 List<PolicySetting> l;
                 if (!mdmByAdmx.TryGetValue(b, out l)) { l = new List<PolicySetting>(); mdmByAdmx[b] = l; }
@@ -78,7 +78,7 @@ namespace PolicyVice
             foreach (PolicySetting g in s.Settings)
             {
                 if (g.Layer != Layers.Registry || g.Source != Sources.GroupPolicy) continue;
-                string key = @"Software\Policies" + (string.IsNullOrEmpty(g.Area) ? "" : "\\" + g.Area);
+                string key = g.PolicyKey ?? (@"Software\Policies" + (string.IsNullOrEmpty(g.Area) ? "" : "\\" + g.Area));
                 string valueName = g.Name == "(Default)" ? "" : g.Name;
                 List<PolicySetting> matches = new List<PolicySetting>();
 

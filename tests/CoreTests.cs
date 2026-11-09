@@ -305,7 +305,7 @@ namespace PolicyVice.Tests
             Check(tsg != null && tsg.Has(FindingKinds.Conflict), "GPO side of conflict");
 
             PolicySetting au = Find(s, Layers.Registry, @"Microsoft\Windows\WindowsUpdate\AU", "NoAutoUpdate");
-            Check(au != null && au.Has(FindingKinds.Conflict) && au.Findings[0].Message.Contains("Update area"), "area overlap");
+            Check(au != null && au.Has(FindingKinds.Overlap) && !au.Has(FindingKinds.Conflict) && au.Findings[0].Message.Contains("Update area"), "area overlap is a hint");
 
             PolicySetting od = Find(s, Layers.Registry, @"Microsoft\OneDrive", "KFMSilentOptIn");
             Check(od != null && od.Source == Sources.MdmAdmx && od.SourceDetail == "OneDriveNGSCv2~Policy~OneDriveNGSC/KFMSilentOptIn", "ingested ADMX owns registry value");
@@ -503,7 +503,7 @@ namespace PolicyVice.Tests
                     big.Set(@"HKLM\SOFTWARE\Policies\Vendor\App" + k, "V" + v, "REG_DWORD", "1");
             DateTime t0 = DateTime.UtcNow;
             Snapshot sbig = Collector.Collect(big, new FakeRsop(), null, null, Opt());
-            Check(sbig.PolicyRegistry.Count == Collector.MaxRegistryValues && HasNote(sbig, @"values under SOFTWARE\Policies were read"), "registry budget " + sbig.PolicyRegistry.Count);
+            Check(sbig.PolicyRegistry.Count == Collector.MaxRegistryValues && HasNote(sbig, "policy values were read"), "registry budget " + sbig.PolicyRegistry.Count);
             Check((DateTime.UtcNow - t0).TotalSeconds < 30, "large registry in reasonable time");
 
             // What decides a conflict is stated without overclaiming.

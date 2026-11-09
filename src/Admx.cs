@@ -165,6 +165,11 @@ namespace PolicyVice
                     string key = Attr(c, "key");
                     Index(string.IsNullOrEmpty(key) ? p.Key : key, vn, p);
                 }
+                else if (c.LocalName == "list" && !string.IsNullOrEmpty(Attr(c, "key")))
+                {
+                    // A list writes numbered or named values under its own key.
+                    Index(Attr(c, "key"), "*", p);
+                }
                 IndexChildren(c, p);
             }
         }
@@ -184,10 +189,27 @@ namespace PolicyVice
             return k.ToLowerInvariant();
         }
 
+        // The policy by ADMX file name (with or without .admx) and policy name.
+        public AdmxPolicy Find(string admxFile, string policy)
+        {
+            if (string.IsNullOrEmpty(admxFile) || string.IsNullOrEmpty(policy)) return null;
+            string f = admxFile.EndsWith(".admx", StringComparison.OrdinalIgnoreCase) ? admxFile.Substring(0, admxFile.Length - 5) : admxFile;
+            Dictionary<string, AdmxPolicy> file;
+            AdmxPolicy p;
+            return byFile.TryGetValue(f, out file) && file.TryGetValue(policy, out p) ? p : null;
+        }
+
+        public bool HasFile(string fileName)
+        {
+            return !string.IsNullOrEmpty(fileName) && byFile.ContainsKey(fileName);
+        }
+
         public AdmxPolicy ForValue(string key, string valueName)
         {
             AdmxPolicy p;
-            return byValue.TryGetValue(Norm(key) + "|" + valueName, out p) ? p : null;
+            string k = Norm(key);
+            if (byValue.TryGetValue(k + "|" + valueName, out p)) return p;
+            return byValue.TryGetValue(k + "|*", out p) ? p : null;
         }
 
         // Finds the ADMX policy behind an MDM setting, for ADMX-backed Policy CSP areas (ADMX_<file>) and ingested ADMX (<app>~Policy~<category>).

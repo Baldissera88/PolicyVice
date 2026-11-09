@@ -42,8 +42,6 @@ namespace PolicyVice
             { "Defender", @"Microsoft\Windows Defender" },
             { "DeliveryOptimization", @"Microsoft\Windows\DeliveryOptimization" },
             { "Power", @"Microsoft\Power\PowerSettings" },
-            { "WindowsLogon", @"Microsoft\Windows\System" },
-            { "Experience", @"Microsoft\Windows\CloudContent" },
         };
 
         public static Snapshot Collect(IRegSource reg, IRsopSource rsop, IEventSource events, AdmxCatalog catalog, CollectOptions opt)
@@ -286,16 +284,60 @@ namespace PolicyVice
         }
 
         // One policy root: HKLM, HKCU or HKU\<SID> \SOFTWARE\Policies, with the Group Policy values that apply to it.
+        // The ADMX policy an MDM setting writes: ADMX_ areas and ingested ADMX through the local ADMX files,
+        // other ADMX-backed Policy CSP settings through the documentation.
+        public static AdmxPolicy AdmxFor(PolicySetting m, AdmxCatalog catalog, CspCatalog csp)
+        {
+            AdmxPolicy a = catalog.ForMdm(m.Area, m.Name);
+            if (a != null || csp == null) return a;
+            CspEntry e = csp.Find(m.Area, m.Name);
+            return e != null && e.AdmxBacked ? catalog.Find(e.AdmxFile, e.AdmxPolicy) : null;
+        }
+
+        // Group Policy results for one scope, shared by the Policies and CurrentVersion\Policies keys.
+        sealed class GpState
+        {
+            public string Sid;
+            public bool Read;
+            public bool Ok;
+            public string Note;
+            public Dictionary<string, List<RsopValue>> Gpo;
+        }
+
         sealed class PolicyRoot
         {
             public string Path;
+            public string Base;
+            public string AreaPrefix;
             public string Scope;
             public string Sid;
             public string Hive;
-            public bool RsopRead;
-            public bool RsopOk;
-            public string RsopNote;
-            public Dictionary<string, List<RsopValue>> Gpo;
+            // CurrentVersion\Policies also holds Windows defaults, so a value without an owner is not flagged there.
+            public bool Defaults;
+            public GpState Gp;
+        }
+
+        static void AddRoots(List<PolicyRoot> roots, string hive, string hivePath, string scope, string sid, GpState gp)
+        {
+            PolicyRoot a = new PolicyRoot();
+            a.Path = hivePath + @"\SOFTWARE\Policies";
+            a.Base = @"Software\Policies";
+            a.AreaPrefix = "";
+            a.Scope = scope;
+            a.Sid = sid;
+            a.Hive = hive;
+            a.Gp = gp;
+            roots.Add(a);
+            PolicyRoot b = new PolicyRoot();
+            b.Path = hivePath + @"\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies";
+            b.Base = @"Software\Microsoft\Windows\CurrentVersion\Policies";
+            b.AreaPrefix = @"Microsoft\Windows\CurrentVersion\Policies";
+            b.Scope = scope;
+            b.Sid = sid;
+            b.Hive = hive;
+            b.Defaults = true;
+            b.Gp = gp;
+            roots.Add(b);
         }
 
         static Dictionary<string, List<RsopValue>> IndexRsop(List<RsopValue> gp)
@@ -317,33 +359,36 @@ namespace PolicyVice
             return d;
         }
 
-        static void ReadUserRsop(PolicyRoot root, IUserRsopSource users, Snapshot s)
+        static void ReadUserRsop(GpState gp, IUserRsopSource users, Snapshot s)
         {
-            root.RsopRead = true;
-            root.Gpo = new Dictionary<string, List<RsopValue>>(StringComparer.OrdinalIgnoreCase);
-            if (users == null) { root.RsopNote = "User Group Policy was not read"; return; }
-            if (string.IsNullOrEmpty(root.Sid)) { root.RsopNote = "The user SID is not known"; return; }
+            gp.Read = true;
+            gp.Gpo = new Dictionary<string, List<RsopValue>>(StringComparer.OrdinalIgnoreCase);
+            if (users == null) { gp.Note = "User Group Policy was not read"; return; }
+            if (string.IsNullOrEmpty(gp.Sid)) { gp.Note = "The user SID is not known"; return; }
             string note = null;
             List<RsopValue> list;
-            try { list = users.UserValues(root.Sid, out note); }
+            try { list = users.UserValues(gp.Sid, out note); }
             catch (Exception ex)
             {
                 list = null;
                 note = "User Group Policy could not be read: " + ex.Message.Trim();
             }
-            root.RsopOk = note == null && list != null;
-            root.RsopNote = note;
-            if (root.RsopOk) root.Gpo = IndexRsop(list);
-            else Note(s, "User Group Policy for " + root.Sid + ": " + (note ?? "not available"));
+            gp.Ok = note == null && list != null;
+            gp.Note = note;
+            if (gp.Ok) gp.Gpo = IndexRsop(list);
+            else Note(s, "User Group Policy for " + gp.Sid + ": " + (note ?? "not available"));
         }
 
         static void ReadPolicyRegistry(IRegSource reg, Snapshot s, AdmxCatalog catalog, List<RsopValue> gp, IUserRsopSource users, CollectOptions opt)
         {
+            CspCatalog csp = CspCatalog.Embedded();
             Dictionary<AdmxPolicy, List<PolicySetting>> mdmByAdmx = new Dictionary<AdmxPolicy, List<PolicySetting>>();
+            Dictionary<string, PolicySetting> mdmByName = new Dictionary<string, PolicySetting>(StringComparer.OrdinalIgnoreCase);
             foreach (PolicySetting p in s.Settings)
             {
                 if (p.Layer != Layers.Mdm) continue;
-                AdmxPolicy a = catalog.ForMdm(p.Area, p.Name);
+                mdmByName[ScopeKey(p.Scope, p.UserSid, p.Area, p.Name)] = p;
+                AdmxPolicy a = AdmxFor(p, catalog, csp);
                 if (a == null) continue;
                 List<PolicySetting> l;
                 if (!mdmByAdmx.TryGetValue(a, out l)) { l = new List<PolicySetting>(); mdmByAdmx[a] = l; }
@@ -351,32 +396,33 @@ namespace PolicyVice
             }
 
             List<PolicyRoot> roots = new List<PolicyRoot>();
-            PolicyRoot machine = new PolicyRoot();
-            machine.Path = @"HKLM\SOFTWARE\Policies";
-            machine.Scope = "Device";
-            machine.Hive = "HKLM";
-            machine.RsopRead = true;
-            machine.RsopOk = s.RsopAvailable;
-            machine.RsopNote = s.RsopNote;
+            GpState machine = new GpState();
+            machine.Read = true;
+            machine.Ok = s.RsopAvailable;
+            machine.Note = s.RsopNote;
             machine.Gpo = IndexRsop(gp);
-            roots.Add(machine);
-            PolicyRoot hkcu = new PolicyRoot();
-            hkcu.Path = @"HKCU\SOFTWARE\Policies";
-            hkcu.Scope = "User";
-            hkcu.Sid = opt.CurrentUserSid;
-            hkcu.Hive = "HKCU";
-            roots.Add(hkcu);
+            AddRoots(roots, "HKLM", "HKLM", "Device", null, machine);
+            GpState current = new GpState();
+            current.Sid = opt.CurrentUserSid;
+            AddRoots(roots, "HKCU", "HKCU", "User", opt.CurrentUserSid, current);
+
+            // Users with MDM user settings, and the signed-in user when PolicyVice runs as another account.
             List<string> sids = new List<string>();
             foreach (PolicySetting p in s.Settings) if (p.UserSid != null && !sids.Contains(p.UserSid)) sids.Add(p.UserSid);
+            RegValue last = reg.Get(@"HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Authentication\LogonUI", "LastLoggedOnUserSID");
+            if (last != null && last.Data != null && RxSid.IsMatch(last.Data) && !string.Equals(last.Data, opt.CurrentUserSid, StringComparison.OrdinalIgnoreCase)
+                && reg.SubKeys(@"HKU\" + last.Data).Length > 0)
+            {
+                if (!sids.Contains(last.Data)) sids.Add(last.Data);
+                if (!string.IsNullOrEmpty(opt.CurrentUserSid))
+                    Note(s, "PolicyVice runs as " + opt.CurrentUserSid + ", not as the signed-in user " + last.Data + ". User policy is read for both.");
+            }
             foreach (string sid in sids)
             {
                 if (string.Equals(sid, opt.CurrentUserSid, StringComparison.OrdinalIgnoreCase)) continue;
-                PolicyRoot u = new PolicyRoot();
-                u.Path = @"HKU\" + sid + @"\SOFTWARE\Policies";
-                u.Scope = "User";
+                GpState u = new GpState();
                 u.Sid = sid;
-                u.Hive = @"HKU\" + sid;
-                roots.Add(u);
+                AddRoots(roots, @"HKU\" + sid, @"HKU\" + sid, "User", sid, u);
             }
 
             int budget = MaxRegistryValues;
@@ -387,7 +433,7 @@ namespace PolicyVice
                 Walk(reg, rt.Path, 0, delegate (string path, string name, RegValue v)
                 {
                     // User Group Policy is only asked for when the user has policy values, because each query can take time.
-                    if (!rt.RsopRead) ReadUserRsop(rt, users, s);
+                    if (!rt.Gp.Read) ReadUserRsop(rt.Gp, users, s);
 
                     RegistryEntry e = new RegistryEntry();
                     e.Path = path;
@@ -397,12 +443,13 @@ namespace PolicyVice
                     s.PolicyRegistry.Add(e);
 
                     string rel = path.Substring(rt.Path.Length).TrimStart('\\');
-                    string polKey = @"Software\Policies" + (rel.Length > 0 ? "\\" + rel : "");
+                    string polKey = rt.Base + (rel.Length > 0 ? "\\" + rel : "");
                     PolicySetting p = new PolicySetting();
                     p.Layer = Layers.Registry;
                     p.Scope = rt.Scope;
                     p.UserSid = rt.Sid;
-                    p.Area = rel;
+                    p.Area = rt.AreaPrefix.Length == 0 ? rel : rel.Length == 0 ? rt.AreaPrefix : rt.AreaPrefix + "\\" + rel;
+                    p.PolicyKey = polKey;
                     p.Name = name.Length == 0 ? "(Default)" : name;
                     p.Value = v.Data;
                     p.ValueKind = v.Kind;
@@ -416,7 +463,7 @@ namespace PolicyVice
 
                     List<RsopValue> rows;
                     PolicySetting m = null;
-                    if (rt.Gpo != null && rt.Gpo.TryGetValue(polKey + "|" + name, out rows) && rows.Count > 0)
+                    if (rt.Gp.Gpo != null && rt.Gp.Gpo.TryGetValue(polKey + "|" + name, out rows) && rows.Count > 0)
                     {
                         p.Source = Sources.GroupPolicy;
                         p.SourceDetail = rows[0].GpoName;
@@ -431,7 +478,7 @@ namespace PolicyVice
                             p.Contributions.Add(c);
                         }
                     }
-                    else if (a != null && (m = MdmFor(mdmByAdmx, a, rt)) != null)
+                    else if ((m = MdmOwner(csp, mdmByAdmx, mdmByName, a, polKey, name, rt)) != null)
                     {
                         p.Source = Sources.MdmAdmx;
                         p.SourceDetail = m.Area + "/" + m.Name;
@@ -443,7 +490,12 @@ namespace PolicyVice
                         c.Wins = true;
                         p.Contributions.Add(c);
                     }
-                    else if (rt.RsopOk)
+                    else if (rt.Defaults)
+                    {
+                        p.Source = Sources.Unknown;
+                        p.SourceDetail = rt.Gp.Ok ? "No GPO or MDM setting found. Many values under CurrentVersion\\Policies are Windows defaults." : "Group Policy was not available";
+                    }
+                    else if (rt.Gp.Ok)
                     {
                         p.Source = Sources.Unmanaged;
                         p.Add(FindingKinds.Unmanaged, "No Group Policy object sets this value, and PolicyVice found no ADMX-backed MDM setting for it. It may be left behind (tattooed), or written by a script, an app or an MDM setting that PolicyVice cannot map.");
@@ -453,14 +505,31 @@ namespace PolicyVice
                         p.Source = Sources.Unknown;
                         p.SourceDetail = rt.Scope == "Device"
                             ? "Resultant Set of Policy was not available"
-                            : "User Group Policy not available" + (string.IsNullOrEmpty(rt.RsopNote) ? "" : ": " + rt.RsopNote.TrimEnd('.'));
+                            : "User Group Policy not available" + (string.IsNullOrEmpty(rt.Gp.Note) ? "" : ": " + rt.Gp.Note.TrimEnd('.'));
                     }
                     if (string.IsNullOrEmpty(p.FriendlyName)) p.FriendlyName = Txt.SplitCamel(p.Name);
                     s.Settings.Add(p);
                     return --budget > 0;
                 });
             }
-            if (budget <= 0) Note(s, "Only the first " + MaxRegistryValues.ToString(CultureInfo.InvariantCulture) + " values under SOFTWARE\\Policies were read.");
+            if (budget <= 0) Note(s, "Only the first " + MaxRegistryValues.ToString(CultureInfo.InvariantCulture) + " policy values were read.");
+        }
+
+        // The MDM setting that wrote a policy value: the ADMX policy behind the value, or the documented registry value
+        // of an ADMX-backed Policy CSP setting. Only ADMX-backed settings write under the policy keys.
+        static PolicySetting MdmOwner(CspCatalog csp, Dictionary<AdmxPolicy, List<PolicySetting>> mdmByAdmx, Dictionary<string, PolicySetting> mdmByName,
+            AdmxPolicy a, string polKey, string name, PolicyRoot rt)
+        {
+            PolicySetting m = a != null ? MdmFor(mdmByAdmx, a, rt) : null;
+            if (m != null) return m;
+            List<CspEntry> docs = csp.FindByRegistry(polKey, name);
+            if (a != null) docs.AddRange(csp.FindByAdmx(a.File, a.Name));
+            foreach (CspEntry e in docs)
+            {
+                if (!e.AdmxBacked) continue;
+                if (mdmByName.TryGetValue(ScopeKey(rt.Scope, rt.Scope == "User" ? rt.Sid : null, e.Area, e.Name), out m)) return m;
+            }
+            return null;
         }
 
         static PolicySetting MdmFor(Dictionary<AdmxPolicy, List<PolicySetting>> mdmByAdmx, AdmxPolicy a, PolicyRoot root)
@@ -619,10 +688,13 @@ namespace PolicyVice
 
         static void Correlate(IRegSource reg, Snapshot s, AdmxCatalog catalog)
         {
-            // Names, value meanings and the conflicts that can be matched setting by setting.
-            Enricher.Apply(s, CspCatalog.Embedded(), catalog, delegate (PolicySetting m) { return WinsNote(s, reg, m, m.Area); });
+            LinkErrors(s);
 
-            // Group Policy in an area that MDM also configures, when no exact match was found above.
+            // Names, value meanings and the conflicts that can be matched setting by setting.
+            CspCatalog csp = CspCatalog.Embedded();
+            Enricher.Apply(s, csp, catalog, delegate (PolicySetting m) { return WinsNote(s, reg, m, m.Area); });
+
+            // Group Policy in an area that MDM also configures, when there is no exact match. This is a hint, not a conflict.
             for (int i = 0; i < Overlaps.GetLength(0); i++)
             {
                 string area = Overlaps[i, 0], key = Overlaps[i, 1];
@@ -636,19 +708,56 @@ namespace PolicyVice
                     if (p.Layer != Layers.Registry || p.Source != Sources.GroupPolicy || p.Scope != "Device") continue;
                     if (!(string.Equals(p.Area, key, StringComparison.OrdinalIgnoreCase) || p.Area.StartsWith(key + "\\", StringComparison.OrdinalIgnoreCase))) continue;
                     if (p.Has(FindingKinds.Conflict)) continue;
-                    p.Add(FindingKinds.Conflict, "MDM also configures the " + area + " area (" + mdm.ToString(CultureInfo.InvariantCulture) + " settings). Check that both do not set the same behaviour." + note);
+                    if (csp.FindByRegistry(p.PolicyKey ?? (@"Software\Policies\" + p.Area), p.Name).Count > 0) continue;
+                    p.Add(FindingKinds.Overlap, "MDM also configures the " + area + " area (" + mdm.ToString(CultureInfo.InvariantCulture) + " settings), but not this exact setting. Check that the two do not set the same behaviour." + note);
                 }
             }
+        }
 
+        // One Error finding per MDM setting that failed: the newest failure and how often it failed. A setting that
+        // failed and is not in PolicyManager\current is added, so every failure shows on the Settings tab.
+        static void LinkErrors(Snapshot s)
+        {
+            Dictionary<string, List<MdmError>> groups = new Dictionary<string, List<MdmError>>(StringComparer.OrdinalIgnoreCase);
+            List<string> order = new List<string>();
             foreach (MdmError e in s.Errors)
             {
-                if (e.Level != "Error" || string.IsNullOrEmpty(e.Area)) continue;
+                if (e.Level != "Error" || string.IsNullOrEmpty(e.Area) || string.IsNullOrEmpty(e.Name)) continue;
+                string k = (e.Scope ?? "Device") + "|" + e.Area + "|" + e.Name;
+                List<MdmError> l;
+                if (!groups.TryGetValue(k, out l)) { l = new List<MdmError>(); groups[k] = l; order.Add(k); }
+                l.Add(e);
+            }
+            foreach (string k in order)
+            {
+                List<MdmError> l = groups[k];
+                MdmError newest = l[0];
+                foreach (MdmError e in l) if (e.Time > newest.Time) newest = e;
+                string scope = newest.Scope ?? "Device";
+                string text = (l.Count == 1 ? "Failed once" : "Failed " + l.Count.ToString(CultureInfo.InvariantCulture) + " times") +
+                    " in the last " + s.EventDays.ToString(CultureInfo.InvariantCulture) + " days. Newest: event " + newest.EventId.ToString(CultureInfo.InvariantCulture) +
+                    " at " + newest.Time.ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture) + ": " + (string.IsNullOrEmpty(newest.Result) ? "failed" : newest.Result);
+                bool found = false;
                 foreach (PolicySetting p in s.Settings)
                 {
-                    if (p.Layer != Layers.Mdm || p.Scope != e.Scope) continue;
-                    if (!string.Equals(p.Area, e.Area, StringComparison.OrdinalIgnoreCase) || !string.Equals(p.Name, e.Name, StringComparison.OrdinalIgnoreCase)) continue;
-                    p.Add(FindingKinds.Error, "Event " + e.EventId + " at " + e.Time.ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture) + ": " + (string.IsNullOrEmpty(e.Result) ? "failed" : e.Result));
+                    if (p.Layer != Layers.Mdm || p.Scope != scope) continue;
+                    if (!string.Equals(p.Area, newest.Area, StringComparison.OrdinalIgnoreCase) || !string.Equals(p.Name, newest.Name, StringComparison.OrdinalIgnoreCase)) continue;
+                    p.Add(FindingKinds.Error, text);
+                    found = true;
                 }
+                if (found) continue;
+                PolicySetting f = new PolicySetting();
+                f.Layer = Layers.Mdm;
+                f.Scope = scope;
+                f.Area = newest.Area;
+                f.Name = newest.Name;
+                f.Value = "";
+                f.FriendlyName = Txt.SplitCamel(newest.Name);
+                f.Source = Sources.Unknown;
+                f.SourceDetail = "Not in PolicyManager\\current: Windows did not apply it";
+                f.CspUri = newest.CspUri;
+                f.Add(FindingKinds.Error, text);
+                s.Settings.Add(f);
             }
         }
 
